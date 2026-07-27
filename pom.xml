@@ -17,7 +17,7 @@
     <version>1.0.0</version>
     <packaging>pom</packaging>
     <name>techfin-platform</name>
-    <description>CCB TechFin Platform - 科技金融平台</description>
+    <description>CCB TechFin Platform - 科技金融服务平台</description>
 
     <properties>
         <java.version>17</java.version>
