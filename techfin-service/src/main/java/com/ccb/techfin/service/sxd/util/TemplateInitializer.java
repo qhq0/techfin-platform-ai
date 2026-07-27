@@ -9,11 +9,12 @@ import java.util.List;
 
 /**
  * 初始化 Word 报告模板，写入占位符。
- * 运行此 main 方法生成 {@code docs/报告模板.docx}。
+ * 运行此 main 方法生成 {@code techfin-controller/src/main/resources/templates/sxd/report-template.docx}。
  * <p>
  * 占位符规则：
  * <ul>
  *   <li>{@code {{字段名}}} — 客户基本信息字段（如 {@code {{cst_nm}}}），由代码替换为实际值</li>
+ *   <li>{@code {{dib_manage_*}}} — 商业计划书提取文本，由代码替换为缓存表读取的文本</li>
  *   <li>{@code {{资产负债表关键科目}}} — 替换为资产负债表表格</li>
  *   <li>{@code {{利润表关键科目}}} — 替换为利润表表格</li>
  * </ul>
@@ -62,16 +63,29 @@ public class TemplateInitializer {
             "if_rad_alarm"   // 存在RAD红色预警
     );
 
+    /** 商业计划书提取文本占位符列表（按展示顺序） */
+    private static final List<String> BUSINESS_PLAN_PLACEHOLDERS = Arrays.asList(
+            "dib_manage_company_profile",            // 公司介绍
+            "dib_director_keyresume",                // 实际控制人及团队简介
+            "dib_manage_business_and_products",      // 主营业务和产品
+            "dib_manage_business_circumstance",       // 经营情况介绍
+            "dib_company_qualification",             // 资质认证与荣誉
+            "dib_manage_progressiveness_description", // 研发成果与转化情况
+            "dib_manage_competitive_advantages",     // 竞争优势介绍
+            "dib_manage_development_strategy",       // 发展战略情况
+            "dib_manage_y_industry_analysis"         // 行业发展情况
+    );
+
     public static void main(String[] args) throws IOException {
         String outputPath = args.length > 0 ? args[0]
-                : "docs/报告模板.docx";
+                : "techfin-controller/src/main/resources/templates/sxd/report-template.docx";
 
         try (XWPFDocument doc = new XWPFDocument()) {
             // 标题
             XWPFParagraph title = doc.createParagraph();
             title.setAlignment(ParagraphAlignment.CENTER);
             XWPFRun titleRun = title.createRun();
-            titleRun.setText("企业信息报告");
+            titleRun.setText("善新贷客户关键信息调查报告");
             titleRun.setBold(true);
             titleRun.setFontSize(22);
             titleRun.setFontFamily("微软雅黑");
@@ -100,14 +114,36 @@ public class TemplateInitializer {
 
             doc.createParagraph();
 
-            // ========== 二、资产负债表关键科目 ==========
+            // ========== 二、商业计划书提取文本 ==========
             XWPFParagraph section2 = doc.createParagraph();
             XWPFRun s2Run = section2.createRun();
-            s2Run.setText("二、资产负债表关键科目");
+            s2Run.setText("二、商业计划书提取文本");
             s2Run.setBold(true);
             s2Run.setFontSize(14);
             s2Run.setFontFamily("微软雅黑");
             s2Run.setColor("1F4E79");
+
+            doc.createParagraph();
+
+            // 每个 tableName 一个占位符段落
+            for (String tableName : BUSINESS_PLAN_PLACEHOLDERS) {
+                XWPFParagraph p = doc.createParagraph();
+                XWPFRun r = p.createRun();
+                r.setText("{{" + tableName + "}}");
+                r.setFontSize(10);
+                r.setFontFamily("微软雅黑");
+            }
+
+            doc.createParagraph();
+
+            // ========== 三、资产负债表关键科目 ==========
+            XWPFParagraph section3 = doc.createParagraph();
+            XWPFRun s3Run = section3.createRun();
+            s3Run.setText("三、资产负债表关键科目");
+            s3Run.setBold(true);
+            s3Run.setFontSize(14);
+            s3Run.setFontFamily("微软雅黑");
+            s3Run.setColor("1F4E79");
 
             doc.createParagraph();
 
@@ -119,14 +155,14 @@ public class TemplateInitializer {
 
             doc.createParagraph();
 
-            // ========== 三、利润表关键科目 ==========
-            XWPFParagraph section3 = doc.createParagraph();
-            XWPFRun s3Run = section3.createRun();
-            s3Run.setText("三、利润表关键科目");
-            s3Run.setBold(true);
-            s3Run.setFontSize(14);
-            s3Run.setFontFamily("微软雅黑");
-            s3Run.setColor("1F4E79");
+            // ========== 四、利润表关键科目 ==========
+            XWPFParagraph section4 = doc.createParagraph();
+            XWPFRun s4Run = section4.createRun();
+            s4Run.setText("四、利润表关键科目");
+            s4Run.setBold(true);
+            s4Run.setFontSize(14);
+            s4Run.setFontFamily("微软雅黑");
+            s4Run.setColor("1F4E79");
 
             doc.createParagraph();
 

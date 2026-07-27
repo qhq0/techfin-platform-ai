@@ -13,6 +13,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -132,7 +135,7 @@ public class SxdController {
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"商业计划书提取数据.xlsx\"")
+                        buildAttachmentDisposition("商业计划书提取数据.xlsx", "business_plan.xlsx"))
                 .body(data);
     }
 
@@ -147,7 +150,7 @@ public class SxdController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/zip"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"财务报表提取数据.zip\"")
+                        buildAttachmentDisposition("财务报表提取数据.zip", "finance_data.zip"))
                 .body(data);
     }
 
@@ -161,7 +164,17 @@ public class SxdController {
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"企业信息报告.docx\"")
+                        buildAttachmentDisposition("善新贷客户关键信息调查报告.docx", "credit_report.docx"))
                 .body(data);
+    }
+
+    /**
+     * 构建 Content-Disposition 附件下载头。
+     * filename 提供 ASCII 回退名（避免 Tomcat 拦截），filename* 提供 UTF-8 中文名。
+     */
+    private static String buildAttachmentDisposition(String cnName, String enFallback) {
+        String encoded = URLEncoder.encode(cnName, StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return "attachment; filename=\"" + enFallback + "\"; filename*=UTF-8''" + encoded;
     }
 }

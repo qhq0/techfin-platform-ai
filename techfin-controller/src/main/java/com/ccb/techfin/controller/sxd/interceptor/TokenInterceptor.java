@@ -17,7 +17,7 @@ import java.util.Map;
 /**
  * Token 拦截器：从请求头 Authorization: Bearer &lt;encrypted-token&gt; 中提取并解密 token。
  * <p>
- * token 由其他后端签发，前端携带。后端使用 RSA 私钥解密并校验 30 分钟有效期，
+ * token 由其他后端签发，前端携带。后端使用 RSA 私钥解密并校验 2 小时有效期，
  * 校验通过后用公钥重新签发新 token（刷新 exp），通过响应头 {@code X-Auth-Token} 返回。
  * </p>
  *
@@ -33,7 +33,7 @@ import java.util.Map;
  * <ol>
  *   <li>RSA 私钥解密 → 得到 JSON</li>
  *   <li>解析 staffCode 和 exp</li>
- *   <li>校验 {@code now - exp ≤ 30 分钟}</li>
+ *   <li>校验 {@code now - exp ≤ 2 小时}</li>
  *   <li>存入 request attribute "staffCode"，供业务层使用</li>
  *   <li>用 RSA 公钥重新加密 {@code {staffCode, exp: now}}，返回在响应头 X-Auth-Token</li>
  * </ol>
@@ -45,8 +45,8 @@ import java.util.Map;
 @Component
 public class TokenInterceptor implements HandlerInterceptor {
 
-    /** Token 有效期：30 分钟（毫秒） */
-    private static final long TOKEN_VALIDITY_MS = 30 * 60 * 1000L;
+    /** Token 有效期：2 小时（毫秒） */
+    private static final long TOKEN_VALIDITY_MS = 2 * 60 * 60 * 1000L;
 
     private final ObjectMapper objectMapper;
 
@@ -102,7 +102,7 @@ public class TokenInterceptor implements HandlerInterceptor {
             String staffCode = staffCodeNode.asText();
             long exp = expNode.asLong();
 
-            // 3. 校验 30 分钟有效期
+            // 3. 校验 2 小时有效期
             long now = System.currentTimeMillis();
             long elapsed = now - exp;
             if (elapsed > TOKEN_VALIDITY_MS) {

@@ -9,7 +9,6 @@ import com.ccb.techfin.model.sxd.entity.SxdAtt;
 import com.ccb.techfin.model.sxd.entity.SxdRecord;
 import com.ccb.techfin.model.sxd.entity.DocEntry;
 import com.ccb.techfin.model.sxd.entity.ExtractData;
-import com.ccb.techfin.model.sxd.enums.TaskStatus;
 import com.ccb.techfin.service.sxd.config.ApiProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -89,7 +88,7 @@ public class CleanupTask {
     private void cleanupUnfinishedDocEntries() {
         List<SxdRecord> unfinishedRecords = sxdMapper.selectList(
                 new LambdaQueryWrapper<SxdRecord>()
-                        .eq(SxdRecord::getStatus, TaskStatus.UNFINISHED));
+                        .eq(SxdRecord::getStatus, "0"));
 
         if (unfinishedRecords.isEmpty()) {
             log.debug("No unfinished tasks to clean up doc entries");
@@ -148,7 +147,7 @@ public class CleanupTask {
     private void cleanupUnfinishedExtractData() {
         List<SxdRecord> unfinishedRecords = sxdMapper.selectList(
                 new LambdaQueryWrapper<SxdRecord>()
-                        .eq(SxdRecord::getStatus, TaskStatus.UNFINISHED));
+                        .eq(SxdRecord::getStatus, "0"));
 
         if (unfinishedRecords.isEmpty()) {
             log.debug("No unfinished tasks to clean up extract data");

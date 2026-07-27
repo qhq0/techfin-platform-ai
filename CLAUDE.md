@@ -82,7 +82,7 @@ Result.fail(-1, "错误信息");             // 业务异常
 - 实体类用 `@TableName`、`@TableId`、`@TableField` 注解
 - `@TableId(type = IdType.AUTO)` 自增主键，`@TableId(type = IdType.INPUT)` 手工赋值主键
 - `@TableField(fill = FieldFill.INSERT)` / `FieldFill.INSERT_UPDATE` 配合 `MyMetaObjectHandler` 实现 `createdAt` / `updatedAt` 自动填充，无需在业务代码中手动 set 时间
-- 枚举实现 `IEnum<String>`，`getValue()` 返回 `name()`，数据库存枚举常量名（如 `TaskStatus.UNFINISHED` → `"0"`）
+- 枚举实现 `IEnum<String>`，`getValue()` 返回 `name()`，数据库存枚举常量名
 - Mapper 接口 `@Mapper` + `extends BaseMapper<T>`，无自定义方法时为空接口
 - 动态查询用 `LambdaQueryWrapper<T>`（如 `new LambdaQueryWrapper<SxdAtt>().eq(...)`）
 - 删除用 `mapper.delete(new LambdaQueryWrapper<>()...eq(...))`
@@ -121,12 +121,12 @@ respBody.getDataAs(DocBatchAddData.class);
 }
 ```
 
-- `exp` 为当前毫秒时间戳，**有效期 30 分钟**，校验逻辑为 `now - exp ≤ 30 分钟`
+- `exp` 为当前毫秒时间戳，**有效期 2 小时**，校验逻辑为 `now - exp ≤ 2 小时`
 - **滑动窗口**：每次请求后端校验通过后，用 RSA 公钥重新加密 `{staffCode, exp: now}`，通过响应头 `X-Auth-Token` 返回刷新后的 token，前端下次请求时携带
 - 解密后的 `staffCode` 存入 `request.setAttribute("staffCode", ...)` 供业务层使用
 
 相关代码：
-- `TokenInterceptor` — 拦截 `/sxd/**` 路径，RSA 私钥解密 → 解析 JSON → 校验 30 分钟有效期 → 公钥重新加密刷新 token
+- `TokenInterceptor` — 拦截 `/sxd/**` 路径，RSA 私钥解密 → 解析 JSON → 校验 2 小时有效期 → 公钥重新加密刷新 token
 - `RsaUtils` — RSA 加解密工具类（`init` 初始化私钥+公钥、`decrypt` 解密、`encrypt` 加密刷新）
 - `WebMvcConfig` — 注册拦截器
 - 配置文件：`rsa.private-key` — RSA 私钥（PKCS8 PEM，含头尾）；`rsa.public-key` — RSA 公钥（X.509 PEM，含头尾）

@@ -22,5 +22,5 @@ public class ApiProperties {
     private Long dirId = 0L;
     private Map<String, Long> docType;
     private String defaultToken = "";
-    private String reportTemplatePath = "classpath:templates/sxd/报告模板.docx";
+    private String reportTemplatePath = "classpath:templates/sxd/report-template.docx";
 }

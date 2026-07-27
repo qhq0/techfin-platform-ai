@@ -8,7 +8,6 @@ import com.ccb.techfin.dao.sxd.SxdMapper;
 import com.ccb.techfin.model.sxd.dto.external.*;
 import com.ccb.techfin.model.sxd.dto.response.ExtractDataItem;
 import com.ccb.techfin.model.sxd.entity.*;
-import com.ccb.techfin.model.sxd.enums.TaskStatus;
 import com.ccb.techfin.service.sxd.CustomerService;
 import com.ccb.techfin.service.sxd.ExtractDataService;
 import com.ccb.techfin.service.sxd.config.ApiProperties;
@@ -84,10 +83,10 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                     "营业利润", "利润总额", "净利润"
             ));
 
-    /** 利润表科目匹配关键词：显示名称 → 可能的 item_standard / item 值 */
+    /** 利润表科目匹配关键词：显示名称 → 可能的 item_standard 值 */
     private static final Map<String, List<String>> PROFIT_ITEM_SEARCH_KEYS = Map.of(
-            "营业收入", Arrays.asList("营业总收入", "营业收入"),
-            "营业成本", Arrays.asList("营业成本"),
+            "营业收入", Arrays.asList("其中：营业收入"),
+            "营业成本", Arrays.asList("其中：营业成本"),
             "管理费用", Arrays.asList("管理费用"),
             "销售费用", Arrays.asList("销售费用"),
             "财务费用", Arrays.asList("财务费用"),
@@ -520,10 +519,12 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             String dateCol = formatDateColumn(reportDate);
 
             // 资产负债表聚合
+            // 无条件先登记当前期日期列，确保即使该期查询数据为空，
+            // 列头仍保留、数据格显示 "-"，与其它期对齐，避免整列丢失。
+            if (!bsDateColumns.contains(dateCol)) {
+                bsDateColumns.add(dateCol);
+            }
             if (bsRecords != null) {
-                if (!bsDateColumns.contains(dateCol)) {
-                    bsDateColumns.add(dateCol);
-                }
                 for (FinanceRecord r : bsRecords) {
                     String itemName = r.getItem();
                     if (itemName != null && BALANCE_SHEET_KEY_ITEMS.contains(itemName)
@@ -537,10 +538,11 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             }
 
             // 利润表聚合
+            // 同样无条件登记当前期日期列，避免空查询导致整列丢失。
+            if (!psDateColumns.contains(dateCol)) {
+                psDateColumns.add(dateCol);
+            }
             if (psRecords != null) {
-                if (!psDateColumns.contains(dateCol)) {
-                    psDateColumns.add(dateCol);
-                }
                 for (String itemName : PROFIT_SHEET_KEY_ITEMS) {
                     BigDecimal value = findProfitItemValue(psRecords, itemName);
                     if (value != null) {
@@ -567,21 +569,23 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         String actCntlrNm = record.getActCntlrNm();
         boolean hasOwnership = "1".equals(record.getHasOwnership());
 
+        // ============ 生成 Word 文档 ============
+        byte[] document = createWordDocument(customerProfile, actCntlrNm, hasOwnership,
+                bsItemDateValues, bsDateColumns,
+                psItemDateValues, psDateColumns, extractTextMap);
+
         // ============ 更新任务状态 + 清理文档记录和缓存 ============
         docEntryMapper.delete(new LambdaQueryWrapper<DocEntry>()
                 .eq(DocEntry::getTaskId, taskId));
         extractDataMapper.delete(new LambdaQueryWrapper<ExtractData>()
                 .eq(ExtractData::getTaskId, taskId));
-        record.setStatus(TaskStatus.COMPLETED);
+        record.setStatus("1");
         sxdMapper.updateById(record);
 
         // ============ 删除外部系统中的文档 ============
         deleteExternalDocs(entries, token);
 
-        // ============ 生成 Word 文档 ============
-        return createWordDocument(customerProfile, actCntlrNm, hasOwnership,
-                bsItemDateValues, bsDateColumns,
-                psItemDateValues, psDateColumns, extractTextMap);
+        return document;
     }
 
     /**
@@ -783,6 +787,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         return null;
     }
 
+
     /**
      * 将 YYYY-MM-DD 格式的日期转换为列标题。
      * 12-31 → "2024年"（年末报告），否则 → "2025年6月"
@@ -935,7 +940,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /**
      * 从利润表记录中按 item_standard 精确匹配指定科目的 current_amount。
-     * 如"营业收入"匹配 item_standard="营业总收入"。
+     * 如"营业收入"匹配 item_standard="其中：营业收入"。
      */
     private BigDecimal findProfitItemValue(List<FinanceRecord> records, String displayName) {
         List<String> keys = PROFIT_ITEM_SEARCH_KEYS.get(displayName);
@@ -1036,59 +1041,65 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /**
      * 替换文档段落中 {{{{field_name}}}} 格式的占位符为实际客户信息字段值。
+     * 使用 {@link XWPFParagraph#getText()} 拼接所有 run 后再替换，避免占位符被拆分到多个 run 中无法匹配。
      */
     private void replaceProfilePlaceholders(XWPFDocument doc, CustomerProfile profile, String actCntlrNm, boolean hasOwnership) {
         for (XWPFParagraph para : doc.getParagraphs()) {
-            for (XWPFRun run : para.getRuns()) {
-                String text = run.getText(0);
-                if (text == null || !text.contains("{{")) continue;
+            String paraText = para.getText();
+            if (paraText == null || !paraText.contains("{{")) continue;
 
-                String replaced = text;
-                boolean changed = false;
-                for (Map.Entry<String, Function<CustomerProfile, String>> entry : PROFILE_FIELD_GETTERS.entrySet()) {
-                    String placeholder = "{{" + entry.getKey() + "}}";
-                    if (replaced.contains(placeholder)) {
-                        String value;
-                        if (!hasOwnership && OWNERSHIP_SENSITIVE_FIELDS.contains(entry.getKey())) {
-                            value = "";
-                        } else {
-                            value = profile != null ? entry.getValue().apply(profile) : "";
-                            value = value != null ? value : "";
-                        }
-                        replaced = replaced.replace(placeholder, value);
-                        changed = true;
+            String replaced = paraText;
+            boolean changed = false;
+            for (Map.Entry<String, Function<CustomerProfile, String>> entry : PROFILE_FIELD_GETTERS.entrySet()) {
+                String placeholder = "{{" + entry.getKey() + "}}";
+                if (replaced.contains(placeholder)) {
+                    String value;
+                    if (!hasOwnership && OWNERSHIP_SENSITIVE_FIELDS.contains(entry.getKey())) {
+                        value = "";
+                    } else {
+                        value = profile != null ? entry.getValue().apply(profile) : "";
+                        value = value != null ? value : "";
                     }
-                }
-                // 实控人姓名从 sxd_record 表读取
-                if (replaced.contains("{{act_cntlr_nm}}")) {
-                    replaced = replaced.replace("{{act_cntlr_nm}}",
-                            actCntlrNm != null ? actCntlrNm : "");
+                    replaced = replaced.replace(placeholder, value);
                     changed = true;
                 }
-                if (changed) {
-                    run.setText(replaced, 0);
+            }
+            // 实控人姓名从 sxd_record 表读取
+            if (replaced.contains("{{act_cntlr_nm}}")) {
+                replaced = replaced.replace("{{act_cntlr_nm}}",
+                        actCntlrNm != null ? actCntlrNm : "");
+                changed = true;
+            }
+            if (changed) {
+                // 清除段落中所有 run，用替换后的完整文本创建新 run
+                for (int i = para.getRuns().size() - 1; i >= 0; i--) {
+                    para.removeRun(i);
                 }
+                para.createRun().setText(replaced, 0);
             }
         }
     }
 
     /**
      * 从 sxd_extract_data 缓存表加载商业计划书提取数据。
-     * @return tableName → text 映射，未缓存时返回空 Map
+     * @return tableName → text 映射；始终包含全部 BUSINESS_PLAN_TABLES 键，
+     *         未缓存的数据项值为空字符串，确保占位符能被替换为空而非残留。
      */
     private Map<String, String> loadExtractDataFromCache(String taskId) {
-        List<ExtractData> cachedList = extractDataMapper.selectList(
-                new LambdaQueryWrapper<ExtractData>()
-                        .eq(ExtractData::getTaskId,
-
-                                taskId));
-        if (cachedList == null || cachedList.isEmpty()) {
-            log.warn("No extract data found in cache for taskId={}, extract placeholders will be empty", taskId);
-            return Collections.emptyMap();
-        }
+        // 先预置全部商业计划书表名为空字符串，保证即便缓存完全为空，
+        // 占位符也能被替换为空字符串，而非原样残留在文档中。
         Map<String, String> map = new LinkedHashMap<>();
         for (String tableName : BUSINESS_PLAN_TABLES) {
             map.put(tableName, "");
+        }
+
+        List<ExtractData> cachedList = extractDataMapper.selectList(
+                new LambdaQueryWrapper<ExtractData>()
+                        .eq(ExtractData::getTaskId,
+                                taskId));
+        if (cachedList == null || cachedList.isEmpty()) {
+            log.warn("No extract data found in cache for taskId={}, extract placeholders will be empty", taskId);
+            return map;
         }
         for (ExtractData item : cachedList) {
             map.merge(item.getTableName(), item.getText(),
@@ -1099,26 +1110,29 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /**
      * 替换文档段落中 {{dib_manage_company_profile}} 等商业计划书提取数据占位符。
+     * 使用 {@link XWPFParagraph#getText()} 拼接所有 run 后再替换，避免占位符被拆分到多个 run 中无法匹配。
      */
     private void replaceExtractDataPlaceholders(XWPFDocument doc, Map<String, String> extractTextMap) {
         for (XWPFParagraph para : doc.getParagraphs()) {
-            for (XWPFRun run : para.getRuns()) {
-                String text = run.getText(0);
-                if (text == null || !text.contains("{{")) continue;
+            String paraText = para.getText();
+            if (paraText == null || !paraText.contains("{{")) continue;
 
-                String replaced = text;
-                boolean changed = false;
-                for (Map.Entry<String, String> entry : extractTextMap.entrySet()) {
-                    String placeholder = "{{" + entry.getKey() + "}}";
-                    if (replaced.contains(placeholder)) {
-                        String value = entry.getValue();
-                        replaced = replaced.replace(placeholder, value != null ? value : "");
-                        changed = true;
-                    }
+            String replaced = paraText;
+            boolean changed = false;
+            for (Map.Entry<String, String> entry : extractTextMap.entrySet()) {
+                String placeholder = "{{" + entry.getKey() + "}}";
+                if (replaced.contains(placeholder)) {
+                    String value = entry.getValue();
+                    replaced = replaced.replace(placeholder, value != null ? value : "");
+                    changed = true;
                 }
-                if (changed) {
-                    run.setText(replaced, 0);
+            }
+            if (changed) {
+                // 清除段落中所有 run，用替换后的完整文本创建新 run
+                for (int i = para.getRuns().size() - 1; i >= 0; i--) {
+                    para.removeRun(i);
                 }
+                para.createRun().setText(replaced, 0);
             }
         }
     }
@@ -1174,51 +1188,56 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         int colCount = 1 + dateColumns.size() + growthCols.size();
         int rowCount = 1 + BALANCE_SHEET_KEY_ITEMS.size() + 1;
 
+        // 确保表格有足够的行：如果已有行（插入新表格时自带一行），先删掉
+        while (table.getRows().size() > 0) {
+            table.removeRow(0);
+        }
         for (int r = 0; r < rowCount; r++) {
-            ensureCellCount(table.createRow(), colCount);
+            XWPFTableRow row = table.createRow();
+            ensureCellCount(row, colCount);
         }
 
         // 表头行
         XWPFTableRow headerRow = table.getRow(0);
-        setCellText(headerRow.getCell(0), "项目", true, null);
+        setCellText(headerRow.getCell(0), "项目");
         for (int i = 0; i < dateColumns.size(); i++) {
-            setCellText(headerRow.getCell(1 + i), dateColumns.get(i), true, null);
+            setCellText(headerRow.getCell(1 + i), dateColumns.get(i));
         }
         for (int i = 0; i < growthCols.size(); i++) {
-            setCellText(headerRow.getCell(1 + dateColumns.size() + i), growthCols.get(i)[0], true, null);
+            setCellText(headerRow.getCell(1 + dateColumns.size() + i), growthCols.get(i)[0]);
         }
 
         // 关键科目数据行
         for (int r = 0; r < BALANCE_SHEET_KEY_ITEMS.size(); r++) {
             String item = BALANCE_SHEET_KEY_ITEMS.get(r);
             XWPFTableRow row = table.getRow(1 + r);
-            setCellText(row.getCell(0), item, false, null);
+            setCellText(row.getCell(0), item);
 
             Map<String, BigDecimal> values = itemDateValues.get(item);
             for (int c = 0; c < dateColumns.size(); c++) {
                 BigDecimal val = values != null ? values.get(dateColumns.get(c)) : null;
-                setCellText(row.getCell(1 + c), formatAmount(val), false, null);
+                setCellText(row.getCell(1 + c), formatAmount(val));
             }
             for (int g = 0; g < growthCols.size(); g++) {
                 String[] ginfo = growthCols.get(g);
                 BigDecimal curVal = values != null ? values.get(ginfo[1]) : null;
                 BigDecimal prevVal = values != null ? values.get(ginfo[2]) : null;
                 setCellText(row.getCell(1 + dateColumns.size() + g),
-                        formatGrowthRate(curVal, prevVal), false, null);
+                        formatGrowthRate(curVal, prevVal));
             }
         }
 
         // 资产负债率行
         int lastRow = 1 + BALANCE_SHEET_KEY_ITEMS.size();
         XWPFTableRow ratioRow = table.getRow(lastRow);
-        setCellText(ratioRow.getCell(0), "资产负债率", true, null);
+        setCellText(ratioRow.getCell(0), "资产负债率");
         for (int c = 0; c < dateColumns.size(); c++) {
             String col = dateColumns.get(c);
             Map<String, BigDecimal> assetVals = itemDateValues.get(ITEM_ASSET_TOTAL);
             Map<String, BigDecimal> liabilityVals = itemDateValues.get(ITEM_LIABILITY_TOTAL);
             BigDecimal asset = assetVals != null ? assetVals.get(col) : null;
             BigDecimal liability = liabilityVals != null ? liabilityVals.get(col) : null;
-            setCellText(ratioRow.getCell(1 + c), formatLiabilityRatio(asset, liability), false, null);
+            setCellText(ratioRow.getCell(1 + c), formatLiabilityRatio(asset, liability));
         }
         for (int g = 0; g < growthCols.size(); g++) {
             String[] ginfo = growthCols.get(g);
@@ -1231,7 +1250,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             BigDecimal curRatio = calcLiabilityRatio(curAsset, curLiability);
             BigDecimal prevRatio = calcLiabilityRatio(prevAsset, prevLiability);
             setCellText(ratioRow.getCell(1 + dateColumns.size() + g),
-                    formatGrowthRate(curRatio, prevRatio), false, null);
+                    formatGrowthRate(curRatio, prevRatio));
         }
     }
 
@@ -1245,37 +1264,42 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         int colCount = 1 + dateColumns.size() + growthCols.size();
         int rowCount = 1 + PROFIT_SHEET_KEY_ITEMS.size() + 3;
 
+        // 确保表格有足够的行：如果已有行（插入新表格时自带一行），先删掉
+        while (table.getRows().size() > 0) {
+            table.removeRow(0);
+        }
         for (int r = 0; r < rowCount; r++) {
-            ensureCellCount(table.createRow(), colCount);
+            XWPFTableRow row = table.createRow();
+            ensureCellCount(row, colCount);
         }
 
         // 表头行
         XWPFTableRow headerRow = table.getRow(0);
-        setCellText(headerRow.getCell(0), "项目", true, null);
+        setCellText(headerRow.getCell(0), "项目");
         for (int i = 0; i < dateColumns.size(); i++) {
-            setCellText(headerRow.getCell(1 + i), dateColumns.get(i), true, null);
+            setCellText(headerRow.getCell(1 + i), dateColumns.get(i));
         }
         for (int i = 0; i < growthCols.size(); i++) {
-            setCellText(headerRow.getCell(1 + dateColumns.size() + i), growthCols.get(i)[0], true, null);
+            setCellText(headerRow.getCell(1 + dateColumns.size() + i), growthCols.get(i)[0]);
         }
 
         // 9 个基本科目
         for (int r = 0; r < PROFIT_SHEET_KEY_ITEMS.size(); r++) {
             String item = PROFIT_SHEET_KEY_ITEMS.get(r);
             XWPFTableRow row = table.getRow(1 + r);
-            setCellText(row.getCell(0), item, false, null);
+            setCellText(row.getCell(0), item);
 
             Map<String, BigDecimal> values = itemDateValues.get(item);
             for (int c = 0; c < dateColumns.size(); c++) {
                 BigDecimal val = values != null ? values.get(dateColumns.get(c)) : null;
-                setCellText(row.getCell(1 + c), formatAmount(val), false, null);
+                setCellText(row.getCell(1 + c), formatAmount(val));
             }
             for (int g = 0; g < growthCols.size(); g++) {
                 String[] ginfo = growthCols.get(g);
                 BigDecimal curVal = values != null ? values.get(ginfo[1]) : null;
                 BigDecimal prevVal = values != null ? values.get(ginfo[2]) : null;
                 setCellText(row.getCell(1 + dateColumns.size() + g),
-                        formatGrowthRate(curVal, prevVal), false, null);
+                        formatGrowthRate(curVal, prevVal));
             }
         }
 
@@ -1294,7 +1318,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                                  List<String[]> growthCols, String label) {
 
         XWPFTableRow row = table.getRow(rowIdx);
-        setCellText(row.getCell(0), label, false, null);
+        setCellText(row.getCell(0), label);
 
         for (int c = 0; c < dateColumns.size(); c++) {
             String col = dateColumns.get(c);
@@ -1319,7 +1343,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                         rdVals != null ? rdVals.get(col) : null,
                         revVals != null ? revVals.get(col) : null);
             }
-            setCellText(row.getCell(1 + c), val, false, null);
+            setCellText(row.getCell(1 + c), val);
         }
 
         // 增长率
@@ -1328,7 +1352,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             BigDecimal curRatio = computeRatioForLabel(itemDateValues, ginfo[1], label);
             BigDecimal prevRatio = computeRatioForLabel(itemDateValues, ginfo[2], label);
             setCellText(row.getCell(1 + dateColumns.size() + g),
-                    formatGrowthRate(curRatio, prevRatio), false, null);
+                    formatGrowthRate(curRatio, prevRatio));
         }
     }
 
@@ -1378,19 +1402,17 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     }
 
     /**
-     * 设置表格单元格文本和样式。
+     * 设置表格单元格文本。
+     * 复用段落中已有的 run 以保留模板预设格式，仅写入文本内容。
      */
-    private void setCellText(XWPFTableCell cell, String text, boolean bold, String colorHex) {
+    private void setCellText(XWPFTableCell cell, String text) {
         XWPFParagraph p = cell.getParagraphs().isEmpty() ? cell.addParagraph() : cell.getParagraphs().get(0);
-        p.setAlignment(ParagraphAlignment.LEFT);
+        // 清除段落中的已有 run，避免模板占位符残留
+        for (int i = p.getRuns().size() - 1; i >= 0; i--) {
+            p.removeRun(i);
+        }
         XWPFRun r = p.createRun();
         r.setText(text != null ? text : "");
-        r.setFontSize(10);
-        r.setFontFamily("微软雅黑");
-        r.setBold(bold);
-        if (colorHex != null) {
-            r.setColor(colorHex);
-        }
     }
 
     /**

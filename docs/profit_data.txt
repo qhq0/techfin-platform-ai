@@ -1,0 +1,71 @@
+{
+    "data": [
+        {
+            "item": "其中：营业收入",
+            "current_amount": 344391400.00,
+            "item_standard": "其中：营业收入",
+            "last_amount": 173172300.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "其中：营业成本",
+            "current_amount": 301484400.00,
+            "item_standard": "其中：营业成本",
+            "last_amount": 165690300.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "管理费用",
+            "current_amount": 6003600.00,
+            "item_standard": "管理费用",
+            "last_amount": 5927400.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "销售费用",
+            "current_amount": 8238000.00,
+            "item_standard": "销售费用",
+            "last_amount": 7252400.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "财务费用",
+            "current_amount": 1258200.00,
+            "item_standard": "财务费用",
+            "last_amount": 869000.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "研发费用",
+            "current_amount": 11792600.00,
+            "item_standard": "研发费用",
+            "last_amount": 14060200.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "营业利润",
+            "current_amount": 13251000.00,
+            "item_standard": "营业利润",
+            "last_amount": -23519000.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "利润总额",
+            "current_amount": 13362500.00,
+            "item_standard": "利润总额",
+            "last_amount": -23519000.00,
+            "report_date": "2025-12-31"
+        },
+        {
+            "item": "净利润",
+            "current_amount": 13362500.00,
+            "item_standard": "净利润",
+            "last_amount": -23519000.00,
+            "report_date": "2025-12-31"
+        }
+    ],
+    "success": true,
+    "code": "1",
+    "message": "操作成功",
+    "errorMessage": null
+}

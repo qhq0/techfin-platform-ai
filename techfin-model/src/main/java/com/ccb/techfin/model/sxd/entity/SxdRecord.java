@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.ccb.techfin.model.sxd.enums.TaskStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -29,8 +28,9 @@ public class SxdRecord {
     @TableField("cst_id")
     private String cstId;
 
+    /** 任务状态：0-未完成，1-已完成 */
     @TableField("status")
-    private TaskStatus status;
+    private String status;
 
     /** 实际控制人姓名，用户确认后回填 */
     @TableField("act_cntlr_nm")
