@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class AttachmentCleanupTask {
+public class CleanupTask {
 
     private final AttachmentMapper attachmentMapper;
     private final DocEntryMapper docEntryMapper;

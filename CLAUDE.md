@@ -44,7 +44,9 @@ techfin-controller ──> techfin-service ──> techfin-dao ──> techfin-m
 | 模块 | 基包 | 职责 |
 |------|------|------|
 | `techfin-common` | `com.ccb.techfin.common` | `result/Result`、`exception/BusinessException`、`GlobalExceptionHandler` |
-| `techfin-model` | `com.ccb.techfin.model.sxd` | Entity、DTO、Enum（无业务逻辑） |
+| | `com.ccb.techfin.common.enums` | 通用枚举（`RoleEnum`） |
+| `techfin-model` | `com.ccb.techfin.model.sxd` | SXD 模块 Entity、DTO、Enum |
+| | `com.ccb.techfin.model.entity` | 跨模块共享 Entity（`MspDept`、`MspRole`、`MspUser`） |
 | `techfin-dao` | `com.ccb.techfin.dao.sxd` | MyBatis-Plus Mapper（`extends BaseMapper<T>`） |
 | `techfin-service` | `com.ccb.techfin.service.sxd` | Service 接口+实现、Config、Validator |
 | `techfin-controller` | `com.ccb.techfin.controller.sxd` | REST Controller + `TechfinApplication` 启动类 |
@@ -85,6 +87,7 @@ Result.fail(-1, "错误信息");             // 业务异常
 - 动态查询用 `LambdaQueryWrapper<T>`（如 `new LambdaQueryWrapper<SxdAtt>().eq(...)`）
 - 删除用 `mapper.delete(new LambdaQueryWrapper<>()...eq(...))`
 - 无需 `@EntityScan`/`@MapperScan`，`@SpringBootApplication(scanBasePackages = "com.ccb.techfin")` 扫描所有模块
+- **MSP 表（`msp_user`、`msp_role`、`msp_dept`）查询时须加 `is_deleted = 0` 条件**：自定义 `@Select` 方法显式加过滤，或使用 `LambdaQueryWrapper.eq(MspDept::getIsDeleted, 0)`，不可直接调 BaseMapper 的 `selectById()`
 
 ### 5. 事务管理
 
@@ -109,15 +112,24 @@ respBody.getDataAs(DocBatchAddData.class);
 
 ### 7. 前端 Token 鉴权
 
-所有 `/techfin/sxd/**` 请求需携带请求头 `Authorization: Bearer <encrypted-token>`，token 为 AES/ECB/PKCS5Padding 加密后的 Base64 字符串，明文格式：`8位用户编号 + key`。
+所有 `/techfin/sxd/**` 请求需携带请求头 `Authorization: Bearer <encrypted-token>`，token 由其他后端签发，明文为 JSON 载荷：
 
-解密后的用户编号存入 `request.setAttribute("userId", ...)` 供业务层使用。
+```json
+{
+  "staffCode": "员工编号",
+  "exp": 1721980800000
+}
+```
+
+- `exp` 为当前毫秒时间戳，**有效期 30 分钟**，校验逻辑为 `now - exp ≤ 30 分钟`
+- **滑动窗口**：每次请求后端校验通过后，用 RSA 公钥重新加密 `{staffCode, exp: now}`，通过响应头 `X-Auth-Token` 返回刷新后的 token，前端下次请求时携带
+- 解密后的 `staffCode` 存入 `request.setAttribute("staffCode", ...)` 供业务层使用
 
 相关代码：
-- `TokenInterceptor` — 拦截 `/sxd/**` 路径，提取并解密 token
-- `AesUtils` — AES 解密工具类
+- `TokenInterceptor` — 拦截 `/sxd/**` 路径，RSA 私钥解密 → 解析 JSON → 校验 30 分钟有效期 → 公钥重新加密刷新 token
+- `RsaUtils` — RSA 加解密工具类（`init` 初始化私钥+公钥、`decrypt` 解密、`encrypt` 加密刷新）
 - `WebMvcConfig` — 注册拦截器
-- 配置文件：`aes.key` — AES 密钥
+- 配置文件：`rsa.private-key` — RSA 私钥（PKCS8 PEM，含头尾）；`rsa.public-key` — RSA 公钥（X.509 PEM，含头尾）
 
 ### 8. API 路径
 
@@ -130,6 +142,33 @@ Controller base: `/sxd`
 - `POST /techfin/sxd/submit-materials` — 提交资料
 - `GET /techfin/sxd/controller-name/{cstId}` — 查询实控人
 - `PUT /techfin/sxd/application-record/controller-name` — 确认实控人
+- `POST /techfin/sxd/cust-ownership` — 管户权校验
+
+### 9. 管户权校验
+
+`POST /techfin/sxd/cust-ownership`，校验当前用户是否拥有指定客户的管户权。
+
+**请求：**
+```json
+{ "taskId": "TASK-xxx", "cstId": "客户编号" }
+```
+
+**判断流程（`CustomerServiceImpl.getCustOwnership()`）：**
+
+1. token 解密后的 `staffCode` → `msp_user.staff_code` → 查找 `role_id`、`dept_id`
+2. `dept_id` → `msp_dept.institution_no`（可能多个部门）
+3. `role_id` 含**分行经办人员(94)** **且** `institution_no` 为 `443536363`（科技金融创新中心） → ✅ 有管户权
+4. `sxd_profile.cst_mngacc_inst_supr_insid` 匹配 `institution_no` **且** `role_id` 含**支行科室负责人(92)** → ✅
+5. `sxd_profile.cst_mngacc_cstmgr_id` 匹配 `staffCode` → ✅
+6. 均不匹配 → ❌ 无管户权
+
+结果写入 `sxd_record.has_ownership`（1-有，0-无）。
+
+相关代码：
+- `SxdController.getCustOwnership()` — 接口入口，从 request attribute 取 staffCode
+- `CustomerService.getCustOwnership()` — Service 接口
+- `CustomerServiceImpl.getCustOwnership()` — 实现类，注入 `MspUserMapper`、`MspDeptMapper`、`CustomerProfileMapper`
+- `RoleEnum` — 角色枚举，提供角色 ID 常量
 
 ## Database Tables
 
@@ -140,6 +179,9 @@ Controller base: `/sxd`
 | `sxd_doc` | `doc_id` (VARCHAR(64)) | 文档明细，外部 API 返回的 ID |
 | `sxd_extract_data` | `id` (BIGINT AUTO_INCREMENT) | 提取数据缓存表 |
 | `sxd_profile` | `cst_id` (VARCHAR(200)) | 客户信息表，以 `cst_id` 为主键 |
+| `msp_user` | `id` (INT AUTO_INCREMENT) | 用户表，`staff_code` 关联 token 中的 staffCode |
+| `msp_role` | `id` (INT AUTO_INCREMENT) | 角色表 |
+| `msp_dept` | `id` (INT AUTO_INCREMENT) | 部门/机构表，`institution_no` 管户支行编号 |
 
 详见 `docs/init-tables.sql`。
 
@@ -149,7 +191,8 @@ Controller base: `/sxd`
 - `api.doc-type.finance` / `api.doc-type.business` — 文档类型 ID 映射
 - `file.upload.allowed-extensions.*` — 不同业务类型的文件扩展名白名单
 - `api.default-token` — 外部 API 鉴权 token
-- `aes.key` — 前端 Token AES 解密密钥
+- `rsa.private-key` — 前端 Token RSA 解密私钥（PKCS8 PEM）
+- `rsa.public-key` — 前端 Token RSA 加密公钥（X.509 PEM，用于刷新 token）
 - `mybatis-plus.configuration.log-impl` — SQL 日志
 
 配置类：`ApiProperties`（prefix=`api`）、`FileUploadConfig`（prefix=`file.upload`）
@@ -158,6 +201,8 @@ Controller base: `/sxd`
 
 业务功能说明文档在 `docs/` 目录下：
 - `docs/上传材料功能说明.md` — 附件上传 + 提交资料全流程
-- `docs/客户信息查询接口说明.md` — 实控人查询 + 确认 API
-- `docs/init-tables.sql` — 建表 SQL
-- `docs/api.json` — Postman Collection
+- `docs/init-tables.sql` — SXD 模块建表 SQL
+- `docs/create-msp-{dept,role,user}-table.sql` — MSP 模块建表 SQL
+- `docs/要素提取功能说明.md` — 资料要素提取
+- `docs/报告生成功能说明.md` — 报告生成
+- `docs/信息确认功能说明.md` — 实控人确认

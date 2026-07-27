@@ -1,0 +1,35 @@
+-- 用户表
+-- 用于存储 MSP 系统用户信息
+
+CREATE TABLE IF NOT EXISTS msp_user (
+    id                   INT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    tenant_code          VARCHAR(12)  DEFAULT NULL             COMMENT '租户编码',
+    account              VARCHAR(45)  DEFAULT NULL             COMMENT '账号',
+    password             VARCHAR(45)  DEFAULT NULL             COMMENT '密码',
+    name                 VARCHAR(20)  DEFAULT NULL             COMMENT '昵称',
+    real_name            VARCHAR(20)  DEFAULT NULL             COMMENT '真实姓名',
+    email                VARCHAR(45)  DEFAULT NULL             COMMENT '邮箱',
+    phone                VARCHAR(45)  DEFAULT NULL             COMMENT '手机号',
+    birthday             VARCHAR(20)  DEFAULT NULL             COMMENT '生日',
+    sex                  SMALLINT     DEFAULT NULL             COMMENT '性别',
+    role_id              VARCHAR(255) DEFAULT NULL             COMMENT '角色ID（逗号分隔）',
+    dept_id              VARCHAR(255) DEFAULT NULL             COMMENT '部门ID（逗号分隔）',
+    create_user          INT          DEFAULT NULL             COMMENT '创建人',
+    create_time          DATETIME     DEFAULT NULL             COMMENT '创建时间',
+    update_user          INT          DEFAULT NULL             COMMENT '更新人',
+    update_time          DATETIME     DEFAULT NULL             COMMENT '更新时间',
+    status               INT          DEFAULT NULL             COMMENT '状态',
+    is_deleted           INT          DEFAULT NULL             COMMENT '是否删除（0-正常，1-删除）',
+    filepath             VARCHAR(500) DEFAULT NULL             COMMENT '头像路径',
+    sigh                 VARCHAR(500) DEFAULT NULL             COMMENT '签名',
+    service_type         VARCHAR(20)  DEFAULT NULL             COMMENT '服务类型',
+    staff_code           VARCHAR(255) DEFAULT NULL             COMMENT '员工编号',
+    landline_num         VARCHAR(50)  DEFAULT NULL             COMMENT '座机号码',
+    vac_sts              VARCHAR(10)  DEFAULT NULL             COMMENT '休假状态',
+    lock_time            VARCHAR(20)  DEFAULT NULL             COMMENT '锁定时间',
+    lock_reason          VARCHAR(255) DEFAULT NULL             COMMENT '锁定原因',
+    channel              VARCHAR(10)  DEFAULT NULL             COMMENT '渠道',
+    secretary            VARCHAR(255) DEFAULT NULL             COMMENT '秘书',
+    is_branch_xnrd_header INT        DEFAULT NULL             COMMENT '是否分行信审主任（0-否，1-是）',
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';

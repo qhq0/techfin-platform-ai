@@ -28,12 +28,12 @@ public interface CustomerService {
 
     /**
      * 校验当前用户是否拥有该客户的管户权。
-     * 从 sxd_profile 查询管户信息，与用户编号比对。
+     * 从 sxd_profile 查询管户信息，与员工编号比对。
      *
-     * @param taskId 任务 ID
-     * @param cstId  客户编号
-     * @param userId 8 位用户编号（从请求头 Token 解密得到）
-     * @return 是否拥有管户权（判断逻辑待定）
+     * @param taskId    任务 ID
+     * @param cstId     客户编号
+     * @param staffCode 员工编号（从请求头 Token 解密得到）
+     * @return 是否拥有管户权
      */
-    boolean getCustOwnership(String taskId, String cstId, String userId);
+    boolean getCustOwnership(String taskId, String cstId, String staffCode);
 }
