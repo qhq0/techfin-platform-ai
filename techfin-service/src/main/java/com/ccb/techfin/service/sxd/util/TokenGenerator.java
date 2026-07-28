@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.crypto.Cipher;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,13 +15,11 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Properties;
 
 /**
  * 生成前端鉴权 token 的测试工具（main 方法运行）。
  * <p>
- * 从 classpath 的 {@code application.properties} 读取 {@code rsa.public-key} 公钥，
- * 加密 JSON 载荷：
+ * 使用内置的 RSA 公钥加密 JSON 载荷：
  * <pre>{@code
  * {"uass":"zhangsan.sz","exp":<当前系统时间戳(毫秒)>}
  * }</pre>
@@ -31,23 +28,33 @@ import java.util.Properties;
  * 生成的 token 写入 {@code docs/token.txt}。
  *
  * <h3>运行方式</h3>
- * 在 IDE 中直接运行此 main 方法即可（classpath 需包含 {@code techfin-controller} 模块的
- * {@code application.properties}）。也可命令行运行：
+ * 在 IDE 中直接运行此 main 方法即可。也可命令行运行：
  * <pre>{@code
  * mvn -q -pl techfin-service -am compile exec:java \
  *   -Dexec.mainClass=com.ccb.techfin.service.sxd.util.TokenGenerator \
  *   -Dexec.classpathScope=runtime
  * }</pre>
  *
- * <p>本工具为自包含实现，不修改任何公共类。
+ * <p>本工具为自包含实现，公钥已内置，不依赖 application.properties，也不修改任何公共类。
  *
  * @author qiuhaoquan
  * @since 2026-07-28
  */
 public class TokenGenerator {
 
-    /** application.properties 在 classpath 中的路径 */
-    private static final String PROPERTIES_RESOURCE = "/application.properties";
+    /** RSA 公钥（X.509 PEM，与 application.properties 中 rsa.public-key 保持一致） */
+    private static final String PUBLIC_KEY =
+            """
+            -----BEGIN PUBLIC KEY-----
+            MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2Lr9Na7j5d/w2fiHaP1V
+            qXBpoooWRdnWguSYtxtPH9Z8kKz6XOyu1/6IBM52BMIOxww9G9H1lSN5jZTFY7KH
+            DZ0xUh5xYyxakiRtXe6JuitZLQvCHYzyPsMFcUT4GGCWkWATklBj5ZyKEiT/oEcJ
+            l0O6f/xxvkfzqmXSfSirDoaCukYSSOop+7IkMcTLdsQKMM1M2AiwTvd+cZQZjdh7
+            7dEgzAF2tuEFGGIKc969fqWprMnnoQa+yYgK7X10ea6sMKT3QMcNIisCHp4Evf1o
+            heEEsljuuTugJLUp31R0ezBgH9fCCXo3kaYwJEZOdGe3kLn9CKXDDn8tLrKD7hdd
+            OwIDAQAB
+            -----END PUBLIC KEY-----
+            """;
 
     /** 默认输出路径 */
     private static final String DEFAULT_OUTPUT_PATH = "docs/token.txt";
@@ -59,7 +66,7 @@ public class TokenGenerator {
         String outputPath = args.length > 0 ? args[0] : DEFAULT_OUTPUT_PATH;
 
         // 1. 读取 RSA 公钥
-        String publicKey = loadPublicKey();
+        String publicKey = getPublicKey();
 
         // 2. 构造载荷（键顺序与 TokenInterceptor 刷新逻辑一致：uass -> exp）
         ObjectMapper objectMapper = new ObjectMapper();
@@ -80,21 +87,10 @@ public class TokenGenerator {
     }
 
     /**
-     * 从 classpath 的 application.properties 读取 rsa.public-key。
+     * 返回内置的 RSA 公钥。
      */
-    private static String loadPublicKey() throws IOException {
-        Properties props = new Properties();
-        try (InputStream in = TokenGenerator.class.getResourceAsStream(PROPERTIES_RESOURCE)) {
-            if (in == null) {
-                throw new IllegalStateException("classpath 下未找到 application.properties：" + PROPERTIES_RESOURCE);
-            }
-            props.load(in);
-        }
-        String publicKey = props.getProperty("rsa.public-key");
-        if (publicKey == null || publicKey.isBlank()) {
-            throw new IllegalStateException("application.properties 中未配置 rsa.public-key");
-        }
-        return publicKey;
+    private static String getPublicKey() {
+        return PUBLIC_KEY;
     }
 
     /**
