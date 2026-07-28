@@ -102,29 +102,30 @@ public class CustomerServiceImpl implements CustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean getCustOwnership(String taskId, String cstId, String staffCode) {
+    public boolean getCustOwnership(String taskId, String cstId, String uass) {
         if (!StringUtils.hasText(taskId)) {
             throw new BusinessException("PARAM_MISSING", "任务 ID 不能为空");
         }
         if (!StringUtils.hasText(cstId)) {
             throw new BusinessException("PARAM_MISSING", "客户编号不能为空");
         }
-        if (!StringUtils.hasText(staffCode)) {
-            throw new BusinessException("PARAM_MISSING", "员工编号不能为空");
+        if (!StringUtils.hasText(uass)) {
+            throw new BusinessException("PARAM_MISSING", "登录账号不能为空");
         }
 
         // ==================== 1. 查找用户角色和部门 ====================
-        MspUser user = mspUserMapper.selectByStaffCode(staffCode);
+        MspUser user = mspUserMapper.selectByAccount(uass);
         if (user == null) {
-            log.warn("User not found by staffCode={}", staffCode);
+            log.warn("User not found by uass={}", uass);
             updateOwnership(taskId, "0");
             return false;
         }
 
+        String staffCode = user.getStaffCode();
         Set<Integer> roleIds = parseCommaSeparated(user.getRoleId());
         List<Integer> deptIds = parseCommaSeparatedToList(user.getDeptId());
 
-        log.debug("User found: staffCode={}, roleIds={}, deptIds={}", staffCode, roleIds, deptIds);
+        log.debug("User found: uass={}, staffCode={}, roleIds={}, deptIds={}", uass, staffCode, roleIds, deptIds);
 
         // ==================== 2. 通过 dept_id 查找 institution_no ====================
         List<String> institutionNos = deptIds.stream()
@@ -139,8 +140,8 @@ public class CustomerServiceImpl implements CustomerService {
         // ==================== 3. 判断是否为分行经办人员（科技金融创新中心）====================
         if (roleIds.contains(RoleEnum.BRANCH_OFFICE_HANDLER.getRoleId())
                 && institutionNos.contains("443536363")) {
-            log.info("Cust ownership granted: staffCode={}, role=分行经办人员({}), institutionNo=443536363",
-                    staffCode, RoleEnum.BRANCH_OFFICE_HANDLER.getRoleId());
+            log.info("Cust ownership granted: uass={}, staffCode={}, role=分行经办人员({}), institutionNo=443536363",
+                    uass, staffCode, RoleEnum.BRANCH_OFFICE_HANDLER.getRoleId());
             updateOwnership(taskId, "1");
             return true;
         }
@@ -154,7 +155,7 @@ public class CustomerServiceImpl implements CustomerService {
         }
 
         String custInstNo = profile.getCstMngaccInstSuprInsid();   // 管户支行编号
-        String custMgrId = profile.getCstMngaccCstmgrId();         // 管户客户经理编号
+        String custMgrId = profile.getCstMngaccCstmgrId();         // 管户客户经理编号（对应 msp_user.staff_code）
 
         log.debug("Customer profile: cstId={}, cstMngaccInstSuprInsid={}, cstMngaccCstmgrId={}",
                 cstId, custInstNo, custMgrId);
@@ -163,20 +164,21 @@ public class CustomerServiceImpl implements CustomerService {
         boolean instMatched = custInstNo != null && institutionNos.contains(custInstNo);
 
         if (instMatched && roleIds.contains(RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleId())) {
-            log.info("Cust ownership granted: staffCode={}, role=支行科室负责人({}), instMatched=true", staffCode, RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleId());
+            log.info("Cust ownership granted: uass={}, staffCode={}, role=支行科室负责人({}), instMatched=true",
+                    uass, staffCode, RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleId());
             updateOwnership(taskId, "1");
             return true;
         }
 
-        // ==================== 6. 匹配管户客户经理编号 ====================
-        if (staffCode.equals(custMgrId)) {
-            log.info("Cust ownership granted: staffCode={}, matched as account manager", staffCode);
+        // ==================== 6. 匹配管户客户经理编号（cst_mngacc_cstmgr_id 对应 msp_user.staff_code）====================
+        if (staffCode != null && staffCode.equals(custMgrId)) {
+            log.info("Cust ownership granted: uass={}, staffCode={}, matched as account manager", uass, staffCode);
             updateOwnership(taskId, "1");
             return true;
         }
 
         // ==================== 7. 无管户权 ====================
-        log.info("Cust ownership denied: staffCode={}, cstId={}", staffCode, cstId);
+        log.info("Cust ownership denied: uass={}, staffCode={}, cstId={}", uass, staffCode, cstId);
         updateOwnership(taskId, "0");
         return false;
     }
