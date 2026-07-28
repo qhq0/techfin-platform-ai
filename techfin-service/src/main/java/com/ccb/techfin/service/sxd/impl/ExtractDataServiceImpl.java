@@ -57,15 +57,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     /** 商业计划书提取数据查询的 tableName 列表（按展示顺序） */
     private static final List<String> BUSINESS_PLAN_TABLES = Collections.unmodifiableList(
             Arrays.asList(
-                    "dib_manage_company_profile",
                     "dib_director_keyresume",
                     "dib_manage_business_and_products",
-                    "dib_manage_business_circumstance",
-                    "dib_company_qualification",
-                    "dib_manage_progressiveness_description",
-                    "dib_manage_competitive_advantages",
-                    "dib_manage_development_strategy",
-                    "dib_manage_y_industry_analysis"
+                    "dib_manage_business_circumstance"
             ));
 
     /** 资产负债表关键科目名称（按展示顺序） */
@@ -157,15 +151,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /** 每个 tableName 对应的文本提取函数 */
     private static final Map<String, Function<BpExtractRecord, String>> TEXT_EXTRACTORS = Map.of(
-            "dib_manage_company_profile", BpExtractRecord::getCompanyProfileText,
             "dib_director_keyresume", r -> formatDirectorResume(r),
             "dib_manage_business_and_products", BpExtractRecord::getBusinessAndProductsText,
-            "dib_manage_business_circumstance", BpExtractRecord::getText,
-            "dib_company_qualification", BpExtractRecord::getText,
-            "dib_manage_progressiveness_description", BpExtractRecord::getProgressivenessText,
-            "dib_manage_competitive_advantages", BpExtractRecord::getCompetitivenessText,
-            "dib_manage_development_strategy", BpExtractRecord::getStrategyText,
-            "dib_manage_y_industry_analysis", BpExtractRecord::getText
+            "dib_manage_business_circumstance", BpExtractRecord::getText
     );
 
     /**
@@ -992,7 +980,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 打开模板文档，替换 {{占位符}} 为实际数据，返回 Word 文档字节。
      * <p>
      * 模板中 {{{{field_name}}}} 占位符会被替换为客户信息字段值，
-     * {{{{资产负债表关键科目}}}} 和 {{{{利润表关键科目}}}} 会被替换为对应的数据表格。
+     * {{{{balance_sheet_key_items}}}} 和 {{{{profit_sheet_key_items}}}} 会被替换为对应的数据表格。
      */
     private byte[] createWordDocument(CustomerProfile profile, String actCntlrNm, boolean hasOwnership,
                                        Map<String, Map<String, BigDecimal>> bsItemDateValues, List<String> bsDateColumns,
@@ -1012,23 +1000,23 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             // 1. 替换客户基本信息占位符 {{cst_nm}}、{{credit_code}} 等
             replaceProfilePlaceholders(doc, profile, actCntlrNm, hasOwnership);
 
-            // 2. 替换商业计划书提取数据占位符 {{dib_manage_company_profile}} 等
+            // 2. 替换商业计划书提取数据占位符 {{dib_director_keyresume}} 等
             replaceExtractDataPlaceholders(doc, extractTextMap);
 
             // 3. 替换资产负债表关键科目占位符 -> 插入表格或清空
             if (!bsDateColumns.isEmpty()) {
-                replacePlaceholderWithTable(doc, "{{资产负债表关键科目}}",
+                replacePlaceholderWithTable(doc, "{{balance_sheet_key_items}}",
                         table -> fillBalanceSheetTable(table, bsItemDateValues, bsDateColumns));
             } else {
-                replacePlaceholderText(doc, "{{资产负债表关键科目}}", "");
+                replacePlaceholderText(doc, "{{balance_sheet_key_items}}", "");
             }
 
             // 4. 替换利润表关键科目占位符 -> 插入表格或清空
             if (!psDateColumns.isEmpty()) {
-                replacePlaceholderWithTable(doc, "{{利润表关键科目}}",
+                replacePlaceholderWithTable(doc, "{{profit_sheet_key_items}}",
                         table -> fillProfitSheetTable(table, psItemDateValues, psDateColumns));
             } else {
-                replacePlaceholderText(doc, "{{利润表关键科目}}", "");
+                replacePlaceholderText(doc, "{{profit_sheet_key_items}}", "");
             }
 
             doc.write(baos);
@@ -1109,7 +1097,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     }
 
     /**
-     * 替换文档段落中 {{dib_manage_company_profile}} 等商业计划书提取数据占位符。
+     * 替换文档段落中 {{dib_director_keyresume}} 等商业计划书提取数据占位符。
      * 使用 {@link XWPFParagraph#getText()} 拼接所有 run 后再替换，避免占位符被拆分到多个 run 中无法匹配。
      */
     private void replaceExtractDataPlaceholders(XWPFDocument doc, Map<String, String> extractTextMap) {

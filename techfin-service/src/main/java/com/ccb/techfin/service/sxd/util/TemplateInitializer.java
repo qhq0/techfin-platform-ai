@@ -15,8 +15,8 @@ import java.util.List;
  * <ul>
  *   <li>{@code {{字段名}}} — 客户基本信息字段（如 {@code {{cst_nm}}}），由代码替换为实际值</li>
  *   <li>{@code {{dib_manage_*}}} — 商业计划书提取文本，由代码替换为缓存表读取的文本</li>
- *   <li>{@code {{资产负债表关键科目}}} — 替换为资产负债表表格</li>
- *   <li>{@code {{利润表关键科目}}} — 替换为利润表表格</li>
+ *   <li>{@code {{balance_sheet_key_items}}} — 替换为资产负债表表格</li>
+ *   <li>{@code {{profit_sheet_key_items}}} — 替换为利润表表格</li>
  * </ul>
  * 用户可在此模板基础上调整格式、布局，只要保留占位符即可。
  *
@@ -65,15 +65,9 @@ public class TemplateInitializer {
 
     /** 商业计划书提取文本占位符列表（按展示顺序） */
     private static final List<String> BUSINESS_PLAN_PLACEHOLDERS = Arrays.asList(
-            "dib_manage_company_profile",            // 公司介绍
             "dib_director_keyresume",                // 实际控制人及团队简介
             "dib_manage_business_and_products",      // 主营业务和产品
-            "dib_manage_business_circumstance",       // 经营情况介绍
-            "dib_company_qualification",             // 资质认证与荣誉
-            "dib_manage_progressiveness_description", // 研发成果与转化情况
-            "dib_manage_competitive_advantages",     // 竞争优势介绍
-            "dib_manage_development_strategy",       // 发展战略情况
-            "dib_manage_y_industry_analysis"         // 行业发展情况
+            "dib_manage_business_circumstance"        // 经营情况介绍
     );
 
     public static void main(String[] args) throws IOException {
@@ -149,7 +143,7 @@ public class TemplateInitializer {
 
             XWPFParagraph bsPlaceholder = doc.createParagraph();
             XWPFRun bsRun = bsPlaceholder.createRun();
-            bsRun.setText("{{资产负债表关键科目}}");
+            bsRun.setText("{{balance_sheet_key_items}}");
             bsRun.setFontSize(10);
             bsRun.setFontFamily("微软雅黑");
 
@@ -168,7 +162,7 @@ public class TemplateInitializer {
 
             XWPFParagraph psPlaceholder = doc.createParagraph();
             XWPFRun psRun = psPlaceholder.createRun();
-            psRun.setText("{{利润表关键科目}}");
+            psRun.setText("{{profit_sheet_key_items}}");
             psRun.setFontSize(10);
             psRun.setFontFamily("微软雅黑");
 
