@@ -37,7 +37,7 @@ techfin-controller ──> techfin-service ──> techfin-dao ──> techfin-m
          └──> techfin-common               └──> techfin-common (via service)
 ```
 
-五个 Maven 模块，均为 com.ccb 的子模块，聚合在父 POM `techfin-platform` 下。
+五个 Maven 模块，均为 com.ccb 的子模块，聚合在父 POM `techfin-platform-ai` 下。
 
 ## Package Map
 

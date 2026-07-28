@@ -7,7 +7,7 @@
 
     <parent>
         <groupId>com.ccb</groupId>
-        <artifactId>techfin-platform</artifactId>
+        <artifactId>techfin-platform-ai</artifactId>
         <version>1.0.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
