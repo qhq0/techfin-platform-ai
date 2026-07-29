@@ -566,6 +566,10 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             }
         }
 
+        // ============ 日期列降序排列（最新在前） ============
+        bsDateColumns.sort(Comparator.comparingInt(ExtractDataServiceImpl::dateColumnToInt).reversed());
+        psDateColumns.sort(Comparator.comparingInt(ExtractDataServiceImpl::dateColumnToInt).reversed());
+
         if (bsDateColumns.isEmpty()) {
             log.warn("No balance sheet data found for taskId={}, placeholder will be empty", taskId);
         }
@@ -816,6 +820,24 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             return year + "年" + month + "月";
         } catch (NumberFormatException e) {
             return year + "年";
+        }
+    }
+
+    /**
+     * 将列标题转换为可排序的整数（年×12+月），用于降序排列。
+     * "2025年" → 2025×12+12=24312；"2025年6月" → 2025×12+6=24306
+     */
+    private static int dateColumnToInt(String col) {
+        if (col == null) return 0;
+        int yearEndIdx = col.indexOf("年");
+        if (yearEndIdx <= 0) return 0;
+        try {
+            int year = Integer.parseInt(col.substring(0, yearEndIdx));
+            int monthEndIdx = col.indexOf("月");
+            int month = monthEndIdx > 0 ? Integer.parseInt(col.substring(yearEndIdx + 1, monthEndIdx)) : 12;
+            return year * 12 + month;
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 
