@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
 import org.apache.xmlbeans.XmlCursor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.*;
@@ -53,6 +54,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     private final RestTemplate restTemplate;
     private final CustomerService customerService;
     private final ResourceLoader resourceLoader;
+
+    @Value("${report.template-path}")
+    private String reportTemplatePath;
 
     /** 商业计划书提取数据查询的 tableName 列表（按展示顺序） */
     private static final List<String> BUSINESS_PLAN_TABLES = Collections.unmodifiableList(
@@ -1031,7 +1035,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                                        Map<String, Map<String, BigDecimal>> bsItemDateValues, List<String> bsDateColumns,
                                        Map<String, Map<String, BigDecimal>> psItemDateValues, List<String> psDateColumns,
                                        Map<String, String> extractTextMap) {
-        String templatePath = apiProperties.getReportTemplatePath();
+        String templatePath = reportTemplatePath;
         Resource templateResource = resourceLoader.getResource(templatePath);
         if (!templateResource.exists()) {
             throw new BusinessException("TEMPLATE_NOT_FOUND",
