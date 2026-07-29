@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -24,18 +26,18 @@ import java.util.Map;
  * <h3>Token 载荷格式</h3>
  * <pre>{@code
  * {
- *   "uass": "登录账号",    // 统一身份认证账号，对应 msp_user.account
- *   "exp": 1721980800000    // 当前时间戳（毫秒）
+ *   "userAccount": "<base64(登录账号)>",  // 统一身份认证账号 Base64 编码，对应 msp_user.account
+ *   "exp": 1721980800000                   // 当前时间戳（毫秒）
  * }
  * }</pre>
  *
  * <h3>校验流程</h3>
  * <ol>
  *   <li>RSA 私钥解密 → 得到 JSON</li>
- *   <li>解析 uass 和 exp</li>
+ *   <li>解析 userAccount（Base64 解码）和 exp</li>
  *   <li>校验 {@code now - exp ≤ 2 小时}</li>
- *   <li>存入 request attribute "uass"，供业务层使用</li>
- *   <li>用 RSA 公钥重新加密 {@code {uass, exp: now}}，返回在响应头 X-Auth-Token</li>
+ *   <li>存入 request attribute "userAccount"，供业务层使用</li>
+ *   <li>用 RSA 公钥重新加密 {@code {userAccount: base64(账号), exp: now}}，返回在响应头 X-Auth-Token</li>
  * </ol>
  *
  * @author qiuhaoquan
@@ -90,41 +92,42 @@ public class TokenInterceptor implements HandlerInterceptor {
             // 1. RSA 私钥解密
             String json = RsaUtils.decrypt(token);
 
-            // 2. 解析 JSON 载荷 {uass, exp}
+            // 2. 解析 JSON 载荷 {userAccount, exp}
             JsonNode payload = objectMapper.readTree(json);
-            JsonNode uassNode = payload.get("uass");
+            JsonNode userAccountNode = payload.get("userAccount");
             JsonNode expNode = payload.get("exp");
-            if (uassNode == null || expNode == null) {
-                log.warn("Token 载荷缺少 uass 或 exp 字段");
+            if (userAccountNode == null || expNode == null) {
+                log.warn("Token 载荷缺少 userAccount 或 exp 字段");
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 return false;
             }
-            String uass = uassNode.asText();
+            // userAccount 为 Base64 编码，解码后得到实际账号
+            String userAccount = new String(Base64.getDecoder().decode(userAccountNode.asText()), StandardCharsets.UTF_8);
             long exp = expNode.asLong();
 
             // 3. 校验 2 小时有效期
             long now = System.currentTimeMillis();
             long elapsed = now - exp;
             if (elapsed > TOKEN_VALIDITY_MS) {
-                log.warn("Token 已过期: uass={}, exp={}, now={}, elapsed={}ms",
-                        uass, exp, now, elapsed);
+                log.warn("Token 已过期: userAccount={}, exp={}, now={}, elapsed={}ms",
+                        userAccount, exp, now, elapsed);
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 return false;
             }
 
             // 4. 存入 request 属性供业务层使用
-            request.setAttribute("uass", uass);
+            request.setAttribute("userAccount", userAccount);
 
-            // 5. 刷新 token：用公钥重新加密 {uass, exp: now}，返回在响应头
+            // 5. 刷新 token：用公钥重新加密 {userAccount: base64(账号), exp: now}，返回在响应头
             Map<String, Object> newPayload = new LinkedHashMap<>();
-            newPayload.put("uass", uass);
+            newPayload.put("userAccount", Base64.getEncoder().encodeToString(userAccount.getBytes(StandardCharsets.UTF_8)));
             newPayload.put("exp", now);
             String newToken = RsaUtils.encrypt(objectMapper.writeValueAsString(newPayload));
             response.setHeader("X-Auth-Token", newToken);
             response.setHeader("Access-Control-Expose-Headers", "X-Auth-Token");
 
             if (log.isDebugEnabled()) {
-                log.debug("Token 校验通过: uass={}, elapsed={}ms", uass, elapsed);
+                log.debug("Token 校验通过: userAccount={}, elapsed={}ms", userAccount, elapsed);
             }
         } catch (Exception e) {
             log.warn("Token 校验失败: {} - {}", request.getRequestURI(), e.getMessage());

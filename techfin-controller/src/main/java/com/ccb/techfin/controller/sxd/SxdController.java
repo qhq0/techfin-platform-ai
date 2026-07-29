@@ -86,9 +86,9 @@ public class SxdController {
     @PostMapping("/cust-ownership")
     public Result<Boolean> getCustOwnership(@RequestBody ReportRequest request,
                                                  HttpServletRequest servletRequest) {
-        String uass = (String) servletRequest.getAttribute("uass");
+        String userAccount = (String) servletRequest.getAttribute("userAccount");
         boolean hasOwnership = customerService.getCustOwnership(
-                request.getTaskId(), request.getCstId(), uass);
+                request.getTaskId(), request.getCstId(), userAccount);
         return Result.success(hasOwnership);
     }
 

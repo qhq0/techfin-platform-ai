@@ -16,11 +16,11 @@ import org.apache.ibatis.annotations.Select;
 public interface MspUserMapper extends BaseMapper<MspUser> {
 
     /**
-     * 根据登录账号（uass，对应 token 载荷中的 uass 字段）查询用户。
+     * 根据登录账号（对应 msp_user.account）查询用户。
      *
-     * @param uass 登录账号
+     * @param userAccount 登录账号
      * @return 用户信息
      */
-    @Select("SELECT * FROM msp_user WHERE account = #{uass} AND is_deleted = 0 LIMIT 1")
-    MspUser selectByAccount(@Param("uass") String uass);
+    @Select("SELECT * FROM msp_user WHERE account = #{userAccount} AND is_deleted = 0 LIMIT 1")
+    MspUser selectByAccount(@Param("userAccount") String userAccount);
 }

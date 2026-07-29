@@ -1,6 +1,6 @@
 -- ============================================================
 -- msp_user 随机测试数据（10 条）
--- account 即 token 中的 uass（统一身份认证账号），role_id/dept_id 关联 msp_role/msp_dept
+-- account 即 token 中的 userAccount（统一身份认证账号），role_id/dept_id 关联 msp_role/msp_dept
 -- staff_code 为员工编号，与 sxd_profile.cst_mngacc_cstmgr_id 对应
 -- ============================================================
 

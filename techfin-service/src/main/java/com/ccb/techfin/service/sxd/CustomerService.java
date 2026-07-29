@@ -32,8 +32,8 @@ public interface CustomerService {
      *
      * @param taskId 任务 ID
      * @param cstId  客户编号
-     * @param uass   登录账号（从请求头 Token 解密得到，对应 msp_user.account）
+     * @param userAccount 登录账号（从请求头 Token 解密得到，对应 msp_user.account）
      * @return 是否拥有管户权
      */
-    boolean getCustOwnership(String taskId, String cstId, String uass);
+    boolean getCustOwnership(String taskId, String cstId, String userAccount);
 }

@@ -57,9 +57,15 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     /** 商业计划书提取数据查询的 tableName 列表（按展示顺序） */
     private static final List<String> BUSINESS_PLAN_TABLES = Collections.unmodifiableList(
             Arrays.asList(
+                    "dib_manage_company_profile",
                     "dib_director_keyresume",
                     "dib_manage_business_and_products",
-                    "dib_manage_business_circumstance"
+                    "dib_manage_business_circumstance",
+                    "dib_company_qualification",
+                    "dib_manage_progressiveness_description",
+                    "dib_manage_competitive_advantages",
+                    "dib_manage_development_strategy",
+                    "dib_manage_y_industry_analysis"
             ));
 
     /** 资产负债表关键科目名称（按展示顺序） */
@@ -151,9 +157,15 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /** 每个 tableName 对应的文本提取函数 */
     private static final Map<String, Function<BpExtractRecord, String>> TEXT_EXTRACTORS = Map.of(
-            "dib_director_keyresume", r -> formatDirectorResume(r),
+            "dib_manage_company_profile", BpExtractRecord::getCompanyProfileText,
+            "dib_director_keyresume", ExtractDataServiceImpl::formatDirectorResume,
             "dib_manage_business_and_products", BpExtractRecord::getBusinessAndProductsText,
-            "dib_manage_business_circumstance", BpExtractRecord::getText
+            "dib_manage_business_circumstance", BpExtractRecord::getText,
+            "dib_company_qualification", BpExtractRecord::getText,
+            "dib_manage_progressiveness_description", BpExtractRecord::getProgressivenessText,
+            "dib_manage_competitive_advantages", BpExtractRecord::getCompetitivenessText,
+            "dib_manage_development_strategy", BpExtractRecord::getStrategyText,
+            "dib_manage_y_industry_analysis", BpExtractRecord::getText
     );
 
     /**
@@ -189,11 +201,22 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         List<ExtractData> cachedList = extractDataMapper.selectList(
                 new LambdaQueryWrapper<ExtractData>()
                         .eq(ExtractData::getTaskId, taskId));
+
+        // 只有缓存包含全部 BUSINESS_PLAN_TABLES 才直接返回，否则视为不完整，删除旧缓存重新拉取
         if (cachedList != null && !cachedList.isEmpty()) {
-            return buildResponseFromCache(cachedList);
+            Set<String> cachedTables = cachedList.stream()
+                    .map(ExtractData::getTableName)
+                    .collect(Collectors.toSet());
+            if (cachedTables.containsAll(BUSINESS_PLAN_TABLES)) {
+                return buildResponseFromCache(cachedList);
+            }
+            log.info("Cache incomplete for taskId={} ({} of {} tables), re-fetching from external API",
+                    taskId, cachedTables.size(), BUSINESS_PLAN_TABLES.size());
+            extractDataMapper.delete(new LambdaQueryWrapper<ExtractData>()
+                    .eq(ExtractData::getTaskId, taskId));
         }
 
-        // 缓存未命中，调外部 API 并写入缓存
+        // 缓存未命中或不完整，调外部 API 并写入缓存
         String token = apiProperties.getDefaultToken();
 
         for (DocEntry entry : docEntries) {

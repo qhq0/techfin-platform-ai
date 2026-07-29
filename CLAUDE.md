@@ -116,15 +116,15 @@ respBody.getDataAs(DocBatchAddData.class);
 
 ```json
 {
-  "uass": "登录账号",
+  "userAccount": "<base64(登录账号)>",
   "exp": 1721980800000
 }
 ```
 
-- `uass` 为统一身份认证账号，**对应 `msp_user.account` 字段**
+- `userAccount` 为统一身份认证账号的 **Base64 编码**，解码后对应 `msp_user.account` 字段
 - `exp` 为当前毫秒时间戳，**有效期 2 小时**，校验逻辑为 `now - exp ≤ 2 小时`
-- **滑动窗口**：每次请求后端校验通过后，用 RSA 公钥重新加密 `{uass, exp: now}`，通过响应头 `X-Auth-Token` 返回刷新后的 token，前端下次请求时携带
-- 解密后的 `uass` 存入 `request.setAttribute("uass", ...)` 供业务层使用
+- **滑动窗口**：每次请求后端校验通过后，用 RSA 公钥重新加密 `{userAccount: base64(账号), exp: now}`，通过响应头 `X-Auth-Token` 返回刷新后的 token，前端下次请求时携带
+- 解密后的 `userAccount` 存入 `request.setAttribute("userAccount", ...)` 供业务层使用
 
 相关代码：
 - `TokenInterceptor` — 拦截 `/sxd/**` 路径，RSA 私钥解密 → 解析 JSON → 校验 2 小时有效期 → 公钥重新加密刷新 token
@@ -156,7 +156,7 @@ Controller base: `/sxd`
 
 **判断流程（`CustomerServiceImpl.getCustOwnership()`）：**
 
-1. token 解密后的 `uass` → `msp_user.account` 查找用户 → 得到 `staff_code`、`role_id`、`dept_id`
+1. token 解密后的 `userAccount` → `msp_user.account` 查找用户 → 得到 `staff_code`、`role_id`、`dept_id`
 2. `dept_id` → `msp_dept.institution_no`（可能多个部门）
 3. `role_id` 含**分行经办人员(94)** **且** `institution_no` 为 `443536363`（科技金融创新中心） → ✅ 有管户权
 4. `sxd_profile.cst_mngacc_inst_supr_insid` 匹配 `institution_no` **且** `role_id` 含**支行科室负责人(92)** → ✅
@@ -166,7 +166,7 @@ Controller base: `/sxd`
 结果写入 `sxd_record.has_ownership`（1-有，0-无）。
 
 相关代码：
-- `SxdController.getCustOwnership()` — 接口入口，从 request attribute 取 uass
+- `SxdController.getCustOwnership()` — 接口入口，从 request attribute 取 userAccount
 - `CustomerService.getCustOwnership()` — Service 接口
 - `CustomerServiceImpl.getCustOwnership()` — 实现类，注入 `MspUserMapper`、`MspDeptMapper`、`CustomerProfileMapper`
 - `RoleEnum` — 角色枚举，提供角色 ID 常量
@@ -180,7 +180,7 @@ Controller base: `/sxd`
 | `sxd_doc` | `doc_id` (VARCHAR(64)) | 文档明细，外部 API 返回的 ID |
 | `sxd_extract_data` | `id` (BIGINT AUTO_INCREMENT) | 提取数据缓存表 |
 | `sxd_profile` | `cst_id` (VARCHAR(200)) | 客户信息表，以 `cst_id` 为主键 |
-| `msp_user` | `id` (INT AUTO_INCREMENT) | 用户表，`account` 关联 token 中的 uass，`staff_code` 关联 `sxd_profile.cst_mngacc_cstmgr_id` |
+| `msp_user` | `id` (INT AUTO_INCREMENT) | 用户表，`account` 关联 token 中的 userAccount，`staff_code` 关联 `sxd_profile.cst_mngacc_cstmgr_id` |
 | `msp_role` | `id` (INT AUTO_INCREMENT) | 角色表 |
 | `msp_dept` | `id` (INT AUTO_INCREMENT) | 部门/机构表，`institution_no` 管户支行编号 |
 

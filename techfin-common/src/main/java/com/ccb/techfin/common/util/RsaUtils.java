@@ -27,17 +27,8 @@ public final class RsaUtils {
 
     private static PrivateKey privateKey;
     private static PublicKey publicKey;
-    private static boolean initialized;
 
     private RsaUtils() {
-    }
-
-    /**
-     * 仅用私钥初始化（仅解密，不刷新 token）。
-     */
-    public static void init(String privateKeyPem) throws Exception {
-        privateKey = buildPrivateKey(privateKeyPem);
-        initialized = true;
     }
 
     /**
@@ -45,10 +36,7 @@ public final class RsaUtils {
      */
     public static void init(String privateKeyPem, String publicKeyPem) throws Exception {
         privateKey = buildPrivateKey(privateKeyPem);
-        if (publicKeyPem != null && !publicKeyPem.isBlank()) {
-            publicKey = buildPublicKey(publicKeyPem);
-        }
-        initialized = true;
+        publicKey = buildPublicKey(publicKeyPem);
     }
 
     /**
@@ -84,27 +72,30 @@ public final class RsaUtils {
     // ==================== 内部方法 ====================
 
     private static void checkInitialized(String key) {
-        if (!initialized) {
+        if (privateKey == null) {
             throw new IllegalStateException("RsaUtils 未初始化，请先调用 init()");
         }
     }
 
-    private static PrivateKey buildPrivateKey(String pem) throws Exception {
+    /**
+     * 从 PEM 字符串中提取 DER 字节（去除头尾标记和空白）。
+     */
+    private static byte[] parsePem(String pem, String beginMarker, String endMarker) {
         String content = pem
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
+                .replace(beginMarker, "")
+                .replace(endMarker, "")
                 .replaceAll("\\s", "");
-        byte[] keyBytes = Base64.getDecoder().decode(content);
+        return Base64.getDecoder().decode(content);
+    }
+
+    private static PrivateKey buildPrivateKey(String pem) throws Exception {
+        byte[] keyBytes = parsePem(pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
         return KeyFactory.getInstance("RSA").generatePrivate(spec);
     }
 
     private static PublicKey buildPublicKey(String pem) throws Exception {
-        String content = pem
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
-                .replaceAll("\\s", "");
-        byte[] keyBytes = Base64.getDecoder().decode(content);
+        byte[] keyBytes = parsePem(pem, "-----BEGIN PUBLIC KEY-----", "-----END PUBLIC KEY-----");
         X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
         return KeyFactory.getInstance("RSA").generatePublic(spec);
     }

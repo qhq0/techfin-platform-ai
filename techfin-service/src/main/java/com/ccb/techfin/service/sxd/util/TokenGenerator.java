@@ -21,8 +21,9 @@ import java.util.Map;
  * <p>
  * 使用内置的 RSA 公钥加密 JSON 载荷：
  * <pre>{@code
- * {"uass":"zhangsan.sz","exp":<当前系统时间戳(毫秒)>}
+ * {"userAccount":"<base64(zhangsan.sz)>","exp":<当前系统时间戳(毫秒)>}
  * }</pre>
+ * userAccount 为统一身份认证账号的 Base64 编码。
  * 载荷格式、键顺序、加密方式（RSA 公钥 + PKCS1v1.5 填充，与 Java {@code Cipher.getInstance("RSA")} 默认一致）
  * 均与 {@code TokenInterceptor} 的解密/刷新逻辑保持一致，生成的 token 可直接用于测试。
  * 生成的 token 写入 {@code docs/token.txt}。
@@ -59,8 +60,8 @@ public class TokenGenerator {
     /** 默认输出路径 */
     private static final String DEFAULT_OUTPUT_PATH = "docs/token.txt";
 
-    /** token 载荷中的 uass（对应 msp_user.account） */
-    private static final String UASS = "zhangsan.sz";
+    /** 统一身份认证账号（对应 msp_user.account），生成 token 时需 Base64 编码后放入载荷 */
+    private static final String USER_ACCOUNT = "zhangsan.sz";
 
     public static void main(String[] args) throws Exception {
         String outputPath = args.length > 0 ? args[0] : DEFAULT_OUTPUT_PATH;
@@ -68,10 +69,10 @@ public class TokenGenerator {
         // 1. 读取 RSA 公钥
         String publicKey = getPublicKey();
 
-        // 2. 构造载荷（键顺序与 TokenInterceptor 刷新逻辑一致：uass -> exp）
+        // 2. 构造载荷（键顺序与 TokenInterceptor 刷新逻辑一致：userAccount -> exp）
         ObjectMapper objectMapper = new ObjectMapper();
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("uass", UASS);
+        payload.put("userAccount", Base64.getEncoder().encodeToString(USER_ACCOUNT.getBytes(StandardCharsets.UTF_8)));
         payload.put("exp", Instant.now().toEpochMilli());
         String json = objectMapper.writeValueAsString(payload);
 
@@ -81,7 +82,7 @@ public class TokenGenerator {
         // 4. 写入文件
         writeToken(token, outputPath);
 
-        System.out.println("Token generated (uass=" + UASS + "):");
+        System.out.println("Token generated (userAccount=" + USER_ACCOUNT + ", base64=" + Base64.getEncoder().encodeToString(USER_ACCOUNT.getBytes(StandardCharsets.UTF_8)) + "):");
         System.out.println(token);
         System.out.println("Saved to: " + outputPath);
     }
