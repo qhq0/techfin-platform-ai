@@ -43,7 +43,7 @@ techfin-controller ──> techfin-service ──> techfin-dao ──> techfin-m
 
 | 模块 | 基包 | 职责 |
 |------|------|------|
-| `techfin-common` | `com.ccb.techfin.common` | `result/Result`、`exception/BusinessException`、`GlobalExceptionHandler` |
+| `techfin-common` | `com.ccb.techfin.common` | `result/Result`、`exception/BusinessException`、`RestExceptionHandler` |
 | | `com.ccb.techfin.common.enums` | 通用枚举（`RoleEnum`） |
 | `techfin-model` | `com.ccb.techfin.model.sxd` | SXD 模块 Entity、DTO、Enum |
 | | `com.ccb.techfin.model.entity` | 跨模块共享 Entity（`MspDept`、`MspRole`、`MspUser`） |
@@ -65,7 +65,7 @@ Result.fail(-1, "错误信息");             // 业务异常
 
 ### 2. 异常体系
 
-- **`BusinessException(code, message)`** — 业务层抛出，`GlobalExceptionHandler` 捕获返回 `400`。`code` 是 String 类型业务码（如 `PARAM_MISSING`、`ATTACH_NOT_FOUND`）
+- **`BusinessException(code, message)`** — 业务层抛出，`RestExceptionHandler` 捕获返回 `400`。`code` 是 String 类型业务码（如 `PARAM_MISSING`、`ATTACH_NOT_FOUND`）
 - **`FileValidationException`** — 继承自 `BusinessException`，文件校验专用
 - 全局异常处理统一返回 `Result.fail(-1, e.getMessage())`
 
