@@ -49,7 +49,7 @@ techfin-controller ──> techfin-service ──> techfin-dao ──> techfin-m
 | | `com.ccb.techfin.model.entity` | 跨模块共享 Entity（`MspDept`、`MspRole`、`MspUser`） |
 | `techfin-dao` | `com.ccb.techfin.dao.sxd` | MyBatis-Plus Mapper（`extends BaseMapper<T>`） |
 | `techfin-service` | `com.ccb.techfin.service.sxd` | Service 接口+实现、Config、Validator |
-| `techfin-controller` | `com.ccb.techfin.controller.sxd` | REST Controller + `TechfinApplication` 启动类 |
+| `techfin-controller` | `com.ccb.techfin` | REST Controller + `CcbServerApplication` 启动类 |
 
 ## Key Conventions
 

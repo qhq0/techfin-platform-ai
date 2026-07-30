@@ -12,9 +12,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication(scanBasePackages = "com.ccb.techfin")
 @EnableScheduling
-public class TechfinApplication {
+public class CcbServerApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(TechfinApplication.class, args);
+        SpringApplication.run(CcbServerApplication.class, args);
     }
 }
