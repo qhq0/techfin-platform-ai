@@ -96,6 +96,7 @@ Result.fail(-1, "错误信息");             // 业务异常
 - `submitMaterials()` — 创建申请记录 + 批量新增 + 写入 sxd_doc + 清理 sxd_att
 - `confirmControllerName()` — 更新 sxd_record
 - `deleteAttachment()` — 删除 sxd_att 记录
+- `getCustOwnership()` — 更新 sxd_record.has_ownership
 
 ### 6. 外部 API 调用模式
 
@@ -141,13 +142,15 @@ Controller base: `/sxd`
 - `POST /techfin/sxd/upload-attachment` — 上传附件
 - `DELETE /techfin/sxd/delete-attachment/{attId}` — 删除附件
 - `POST /techfin/sxd/submit-materials` — 提交资料
-- `GET /techfin/sxd/controller-name/{cstId}` — 查询实控人
+- `GET /techfin/sxd/controller-name/{cstId}` — 查询实控人（需检查 sxd_record 管户权，无管户权返回空字符串）
 - `PUT /techfin/sxd/application-record/controller-name` — 确认实控人
 - `POST /techfin/sxd/cust-ownership` — 管户权校验
 
 ### 9. 管户权校验
 
-`POST /techfin/sxd/cust-ownership`，校验当前用户是否拥有指定客户的管户权。
+#### 9.1 管户权校验接口
+
+`POST /techfin/sxd/cust-ownership`，校验当前用户是否拥有指定客户的管户权，结果写入 `sxd_record.has_ownership`。
 
 **请求：**
 ```json
@@ -170,6 +173,18 @@ Controller base: `/sxd`
 - `CustomerService.getCustOwnership()` — Service 接口
 - `CustomerServiceImpl.getCustOwnership()` — 实现类，注入 `MspUserMapper`、`MspDeptMapper`、`CustomerProfileMapper`
 - `RoleEnum` — 角色枚举，提供角色 ID 常量
+
+#### 9.2 实控人查询的管户权检查
+
+`GET /techfin/sxd/controller-name/{cstId}` 查询实控人时，除查询 `sxd_profile.act_cntlr_nm` 外，还需检查管户权：
+
+1. 校验 `cstId` 非空
+2. 查询 `sxd_profile` 获取 `actCntlrNm`；查不到时抛出 `CUSTOMER_NOT_FOUND`
+3. 查询 `sxd_record` 表中该 `cstId` 是否存在 `has_ownership = '1'` 的记录
+4. 有管户权 → 返回 `actCntlrNm`
+5. 无管户权 → 返回空字符串 `""`
+
+相关代码：`CustomerServiceImpl.getControllerName()`
 
 ## Database Tables
 
@@ -206,4 +221,4 @@ Controller base: `/sxd`
 - `docs/create-msp-{dept,role,user}-table.sql` — MSP 模块建表 SQL
 - `docs/要素提取功能说明.md` — 资料要素提取
 - `docs/报告生成功能说明.md` — 报告生成
-- `docs/信息确认功能说明.md` — 实控人确认
+- `docs/信息确认功能说明.md` — 实控人查询（含管户权检查） + 管户权校验

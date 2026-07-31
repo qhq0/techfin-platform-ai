@@ -45,6 +45,7 @@ public class CustomerServiceImpl implements CustomerService {
             throw new BusinessException("PARAM_MISSING", "客户编号不能为空");
         }
 
+        // 1. 查询 sxd_profile 获取实控人姓名
         CustomerProfile profile = customerProfileMapper.selectById(cstId);
 
         if (profile == null) {
@@ -53,6 +54,20 @@ public class CustomerServiceImpl implements CustomerService {
         }
 
         String name = profile.getActCntlrNm();
+
+        // 2. 从 sxd_record 查询管户权：存在 has_ownership = '1' 的记录才返回实控人姓名
+        boolean hasOwnership = sxdMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SxdRecord>()
+                        .eq(SxdRecord::getCstId, cstId)
+                        .eq(SxdRecord::getHasOwnership, "1"))
+                .stream()
+                .anyMatch(record -> "1".equals(record.getHasOwnership()));
+
+        if (!hasOwnership) {
+            log.info("Customer controller name query denied: cstId={}, no ownership record found", cstId);
+            return "";
+        }
+
         log.info("Customer controller name query: cstId={}, actCntlrNm={}", cstId, name);
         return name;
     }

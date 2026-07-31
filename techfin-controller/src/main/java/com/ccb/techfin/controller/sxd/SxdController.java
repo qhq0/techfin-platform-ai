@@ -73,6 +73,8 @@ public class SxdController {
 
     /**
      * 根据客户编号查询实控人姓名。
+     * 查询 sxd_profile 获取实控人姓名，同时从 sxd_record 检查管户权（has_ownership = '1'），
+     * 有管户权时正常返回姓名，无管户权时返回空字符串。
      */
     @GetMapping("/controller-name/{cstId}")
     public Result<String> getControllerName(@PathVariable("cstId") String cstId) {
