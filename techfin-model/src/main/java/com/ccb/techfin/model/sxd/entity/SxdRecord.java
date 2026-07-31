@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * @since 2026-07-23
  */
 @Data
-@TableName("sxd_record")
+@TableName("kjjr_ai_sxd_record")
 public class SxdRecord {
 
     @TableId(value = "task_id", type = IdType.INPUT)

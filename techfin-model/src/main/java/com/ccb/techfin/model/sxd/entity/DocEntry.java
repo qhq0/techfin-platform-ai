@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("sxd_doc")
+@TableName("kjjr_ai_sxd_doc")
 public class DocEntry {
 
     /** 资料批量新增返回的文档 ID（全局唯一，用作主键） */

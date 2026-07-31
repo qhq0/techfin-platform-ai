@@ -15,7 +15,7 @@ import java.time.LocalDate;
  * @since 2026-07-23
  */
 @Data
-@TableName("sxd_profile")
+@TableName("kjjr_ai_sxd_profile")
 public class CustomerProfile {
 
     /** 客户编号（主键） */

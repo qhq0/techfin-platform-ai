@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("sxd_extract_data")
+@TableName("kjjr_ai_sxd_extract_data")
 public class ExtractData {
 
     /** 自增主键 */

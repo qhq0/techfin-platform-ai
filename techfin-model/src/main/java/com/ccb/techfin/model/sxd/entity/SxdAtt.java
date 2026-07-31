@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("sxd_att")
+@TableName("kjjr_ai_sxd_att")
 public class SxdAtt {
 
     @TableId(type = IdType.AUTO)
