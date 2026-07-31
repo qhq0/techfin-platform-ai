@@ -11,10 +11,10 @@ CREATE DATABASE IF NOT EXISTS mydb
 USE mydb;
 
 -- ------------------------------------------------------------
--- 1. sxd_att — 附件元信息表（独立实体）
+-- 1. kjjr_ai_sxd_att — 附件元信息表（独立实体）
 --    上传时写入，提交时查询 fileName/fileSize/businessType 用于外部 API
 -- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sxd_att (
+CREATE TABLE IF NOT EXISTS kjjr_ai_sxd_att (
     id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
     att_id        VARCHAR(64)  NOT NULL                COMMENT '附件上传返回的附件 ID',
     file_name     VARCHAR(255) DEFAULT NULL             COMMENT '上传时的原始文件名',
@@ -25,10 +25,10 @@ CREATE TABLE IF NOT EXISTS sxd_att (
 
 
 -- ------------------------------------------------------------
--- 2. sxd_record — 申请记录表
+-- 2. kjjr_ai_sxd_record — 申请记录表
 --    提交资料时创建，主键为 task_id，无外键约束
 -- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sxd_record (
+CREATE TABLE IF NOT EXISTS kjjr_ai_sxd_record (
     task_id      VARCHAR(64)  NOT NULL                COMMENT '任务 ID，格式 TASK-<32位hex>',
     credit_code  VARCHAR(30)  NOT NULL                COMMENT '统一社会信用代码',
     cst_id       VARCHAR(64)  NOT NULL                COMMENT '客户编号',
@@ -42,12 +42,12 @@ CREATE TABLE IF NOT EXISTS sxd_record (
 
 
 -- ------------------------------------------------------------
--- 3. sxd_doc — 文档明细表（集合表）
+-- 3. kjjr_ai_sxd_doc — 文档明细表（集合表）
 --    每条记录对应外部 API 返回的一条文档，DOC_ID 全局唯一
 -- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sxd_doc (
+CREATE TABLE IF NOT EXISTS kjjr_ai_sxd_doc (
     doc_id        VARCHAR(64)  NOT NULL                COMMENT '资料批量新增返回的文档 ID',
-    task_id       VARCHAR(64)  NOT NULL                COMMENT '关联 sxd_record.task_id',
+    task_id       VARCHAR(64)  NOT NULL                COMMENT '关联 kjjr_ai_sxd_record.task_id',
     business_type VARCHAR(32)  DEFAULT NULL             COMMENT '业务类型（docTypeId 值），由 financeFiles/businessFile 分类从配置 api.doc-type.* 获取',
     report_date   VARCHAR(10)  DEFAULT NULL             COMMENT '财报报告日期（仅 finance 类型有值）',
     PRIMARY KEY (doc_id)
@@ -55,13 +55,13 @@ CREATE TABLE IF NOT EXISTS sxd_doc (
 
 
 -- ------------------------------------------------------------
--- 4. sxd_extract_data — 提取数据缓存表
+-- 4. kjjr_ai_sxd_extract_data — 提取数据缓存表
 --    缓存外部 API 返回的提取文本，避免重复调用
 -- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sxd_extract_data (
+CREATE TABLE IF NOT EXISTS kjjr_ai_sxd_extract_data (
     id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
-    task_id      VARCHAR(64)  NOT NULL                COMMENT '关联 sxd_record.task_id',
-    doc_id       VARCHAR(64)  NOT NULL                COMMENT '关联 sxd_doc.doc_id',
+    task_id      VARCHAR(64)  NOT NULL                COMMENT '关联 kjjr_ai_sxd_record.task_id',
+    doc_id       VARCHAR(64)  NOT NULL                COMMENT '关联 kjjr_ai_sxd_doc.doc_id',
     table_name   VARCHAR(128) NOT NULL                COMMENT '提取表名，如 dib_manage_company_profile',
     text         TEXT         DEFAULT NULL             COMMENT '提取文本内容',
     created_at   DATETIME     NOT NULL                COMMENT '创建时间',

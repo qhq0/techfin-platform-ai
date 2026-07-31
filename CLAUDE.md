@@ -92,11 +92,11 @@ Result.fail(-1, "错误信息");             // 业务异常
 ### 5. 事务管理
 
 所有写操作 Service 方法加 `@Transactional(rollbackFor = Exception.class)`：
-- `uploadFile()` — 上传文件 + 写入 sxd_att
-- `submitMaterials()` — 创建申请记录 + 批量新增 + 写入 sxd_doc + 清理 sxd_att
-- `confirmControllerName()` — 更新 sxd_record
-- `deleteAttachment()` — 删除 sxd_att 记录
-- `getCustOwnership()` — 更新 sxd_record.has_ownership
+- `uploadFile()` — 上传文件 + 写入 kjjr_ai_sxd_att
+- `submitMaterials()` — 创建申请记录 + 批量新增 + 写入 kjjr_ai_sxd_doc + 清理 kjjr_ai_sxd_att
+- `confirmControllerName()` — 更新 kjjr_ai_sxd_record
+- `deleteAttachment()` — 删除 kjjr_ai_sxd_att 记录
+- `getCustOwnership()` — 更新 kjjr_ai_sxd_record.has_ownership
 
 ### 6. 外部 API 调用模式
 
@@ -142,7 +142,7 @@ Controller base: `/sxd`
 - `POST /techfin/sxd/upload-attachment` — 上传附件
 - `DELETE /techfin/sxd/delete-attachment/{attId}` — 删除附件
 - `POST /techfin/sxd/submit-materials` — 提交资料
-- `GET /techfin/sxd/controller-name/{cstId}` — 查询实控人（需检查 sxd_record 管户权，无管户权返回空字符串）
+- `POST /techfin/sxd/controller-name` — 查询实控人（用 cstId 查姓名、用 taskId 查 kjjr_ai_sxd_record 管户权，无管户权返回空字符串）
 - `PUT /techfin/sxd/application-record/controller-name` — 确认实控人
 - `POST /techfin/sxd/cust-ownership` — 管户权校验
 
@@ -150,7 +150,7 @@ Controller base: `/sxd`
 
 #### 9.1 管户权校验接口
 
-`POST /techfin/sxd/cust-ownership`，校验当前用户是否拥有指定客户的管户权，结果写入 `sxd_record.has_ownership`。
+`POST /techfin/sxd/cust-ownership`，校验当前用户是否拥有指定客户的管户权，结果写入 `kjjr_ai_sxd_record.has_ownership`。
 
 **请求：**
 ```json
@@ -159,14 +159,15 @@ Controller base: `/sxd`
 
 **判断流程（`CustomerServiceImpl.getCustOwnership()`）：**
 
-1. token 解密后的 `userAccount` → `msp_user.account` 查找用户 → 得到 `staff_code`、`role_id`、`dept_id`
-2. `dept_id` → `msp_dept.institution_no`（可能多个部门）
-3. `role_id` 含**分行经办人员(94)** **且** `institution_no` 为 `443536363`（科技金融创新中心） → ✅ 有管户权
-4. `sxd_profile.cst_mngacc_inst_supr_insid` 匹配 `institution_no` **且** `role_id` 含**支行科室负责人(92)** → ✅
-5. `sxd_profile.cst_mngacc_cstmgr_id` 匹配 `msp_user.staff_code`（员工编号） → ✅
-6. 均不匹配 → ❌ 无管户权
+1. token 解密后的 `userAccount` → `msp_user.account` 查找用户 → 得到 `staff_code`、`role_id`（一个或多个，逗号分隔）、`dept_id`（仅一个）
+2. `dept_id` → `msp_dept.institution_no`
+3. `role_id` 含**分行经办人员(94)** **且** `institution_no` 为 `443536363`（科技金融创新中心） → ✅ 有管户权；否则进入下一步
+4. `kjjr_ai_sxd_profile.cst_mngacc_inst_supr_insid` 匹配 `institution_no`（一致）**且** `role_id` 含**支行科室负责人(92)** → ✅
+5. 若上一步机构编号不一致、或一致但非支行科室负责人 → 进入下一步
+6. `kjjr_ai_sxd_profile.cst_mngacc_cstmgr_id` 匹配 `msp_user.staff_code`（员工编号） → ✅
+7. 其余情况 → ❌ 无管户权
 
-结果写入 `sxd_record.has_ownership`（1-有，0-无）。
+结果写入 `kjjr_ai_sxd_record.has_ownership`（1-有，0-无）。
 
 相关代码：
 - `SxdController.getCustOwnership()` — 接口入口，从 request attribute 取 userAccount
@@ -176,26 +177,26 @@ Controller base: `/sxd`
 
 #### 9.2 实控人查询的管户权检查
 
-`GET /techfin/sxd/controller-name/{cstId}` 查询实控人时，除查询 `sxd_profile.act_cntlr_nm` 外，还需检查管户权：
+`POST /techfin/sxd/controller-name`（请求体 `{taskId, cstId}`）查询实控人时，用 `cstId` 查姓名、用 `taskId` 查管户权：
 
-1. 校验 `cstId` 非空
-2. 查询 `sxd_profile` 获取 `actCntlrNm`；查不到时抛出 `CUSTOMER_NOT_FOUND`
-3. 查询 `sxd_record` 表中该 `cstId` 是否存在 `has_ownership = '1'` 的记录
-4. 有管户权 → 返回 `actCntlrNm`
-5. 无管户权 → 返回空字符串 `""`
+1. 校验 `taskId`、`cstId` 非空
+2. 用 `cstId` 查询 `kjjr_ai_sxd_profile` 获取 `actCntlrNm`；查不到时抛出 `CUSTOMER_NOT_FOUND`
+3. 用 `taskId`（主键）查询 `kjjr_ai_sxd_record` 获取 `has_ownership`；查不到时抛出 `TASK_NOT_FOUND`
+4. `has_ownership = '1'` → 返回 `actCntlrNm`
+5. `has_ownership` 为 `'0'` 或未设置 → 返回空字符串 `""`
 
-相关代码：`CustomerServiceImpl.getControllerName()`
+相关代码：`CustomerServiceImpl.getControllerName(taskId, cstId)`
 
 ## Database Tables
 
 | 表名 | 主键 | 说明 |
 |------|------|------|
-| `sxd_att` | `id` (BIGINT AUTO_INCREMENT) | 附件元信息，`att_id` 唯一索引 |
-| `sxd_record` | `task_id` (VARCHAR(64)) | 申请记录，手工生成 `TASK-<32位hex>` |
-| `sxd_doc` | `doc_id` (VARCHAR(64)) | 文档明细，外部 API 返回的 ID |
-| `sxd_extract_data` | `id` (BIGINT AUTO_INCREMENT) | 提取数据缓存表 |
-| `sxd_profile` | `cst_id` (VARCHAR(200)) | 客户信息表，以 `cst_id` 为主键 |
-| `msp_user` | `id` (INT AUTO_INCREMENT) | 用户表，`account` 关联 token 中的 userAccount，`staff_code` 关联 `sxd_profile.cst_mngacc_cstmgr_id` |
+| `kjjr_ai_sxd_att` | `id` (BIGINT AUTO_INCREMENT) | 附件元信息，`att_id` 唯一索引 |
+| `kjjr_ai_sxd_record` | `task_id` (VARCHAR(64)) | 申请记录，手工生成 `TASK-<32位hex>` |
+| `kjjr_ai_sxd_doc` | `doc_id` (VARCHAR(64)) | 文档明细，外部 API 返回的 ID |
+| `kjjr_ai_sxd_extract_data` | `id` (BIGINT AUTO_INCREMENT) | 提取数据缓存表 |
+| `kjjr_ai_sxd_profile` | `cst_id` (VARCHAR(200)) | 客户信息表，以 `cst_id` 为主键 |
+| `msp_user` | `id` (INT AUTO_INCREMENT) | 用户表，`account` 关联 token 中的 userAccount，`staff_code` 关联 `kjjr_ai_sxd_profile.cst_mngacc_cstmgr_id` |
 | `msp_role` | `id` (INT AUTO_INCREMENT) | 角色表 |
 | `msp_dept` | `id` (INT AUTO_INCREMENT) | 部门/机构表，`institution_no` 管户支行编号 |
 

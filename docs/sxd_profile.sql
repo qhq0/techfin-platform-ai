@@ -1,10 +1,10 @@
 -- ============================================================
--- 表名：sxd_profile（善新贷材料生成结果表）
+-- 表名：kjjr_ai_sxd_profile（善新贷材料生成结果表）
 -- 说明：基于 客户信息表.sql 结构，去掉 etl_dt 字段，
 --       以 cst_id 为主键
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS sxd_profile (
+CREATE TABLE IF NOT EXISTS kjjr_ai_sxd_profile (
     data_bsn_dt               DATE         NOT NULL                COMMENT '数据业务日期',
     cst_id                    VARCHAR(200) NOT NULL                COMMENT '客户编号',
     cst_nm                    VARCHAR(500) NOT NULL                COMMENT '客户名称',
