@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,12 +39,15 @@ public class CustomerServiceImpl implements CustomerService {
     private final MspDeptMapper mspDeptMapper;
 
     @Override
-    public String getControllerName(String cstId) {
+    public String getControllerName(String taskId, String cstId) {
+        if (!StringUtils.hasText(taskId)) {
+            throw new BusinessException("PARAM_MISSING", "任务 ID 不能为空");
+        }
         if (!StringUtils.hasText(cstId)) {
             throw new BusinessException("PARAM_MISSING", "客户编号不能为空");
         }
 
-        // 1. 查询 sxd_profile 获取实控人姓名
+        // 1. 用 cstId 查询 kjjr_ai_sxd_profile 获取实控人姓名
         CustomerProfile profile = customerProfileMapper.selectById(cstId);
 
         if (profile == null) {
@@ -55,20 +57,22 @@ public class CustomerServiceImpl implements CustomerService {
 
         String name = profile.getActCntlrNm();
 
-        // 2. 从 sxd_record 查询管户权：存在 has_ownership = '1' 的记录才返回实控人姓名
-        boolean hasOwnership = sxdMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SxdRecord>()
-                        .eq(SxdRecord::getCstId, cstId)
-                        .eq(SxdRecord::getHasOwnership, "1"))
-                .stream()
-                .anyMatch(record -> "1".equals(record.getHasOwnership()));
+        // 2. 用 taskId（主键）精确查询 kjjr_ai_sxd_record.has_ownership，值为 '1' 才返回姓名，否则返回空字符串
+        SxdRecord record = sxdMapper.selectById(taskId);
+        if (record == null) {
+            log.warn("Task not found for controller name query: taskId={}", taskId);
+            throw new BusinessException("TASK_NOT_FOUND",
+                    "任务 [" + taskId + "] 不存在");
+        }
 
-        if (!hasOwnership) {
-            log.info("Customer controller name query denied: cstId={}, no ownership record found", cstId);
+        if (!"1".equals(record.getHasOwnership())) {
+            log.info("Customer controller name query denied: taskId={}, cstId={}, hasOwnership={}",
+                    taskId, cstId, record.getHasOwnership());
             return "";
         }
 
-        log.info("Customer controller name query: cstId={}, actCntlrNm={}", cstId, name);
+        log.info("Customer controller name query: taskId={}, cstId={}, actCntlrNm={}",
+                taskId, cstId, name);
         return name;
     }
 
@@ -128,7 +132,7 @@ public class CustomerServiceImpl implements CustomerService {
             throw new BusinessException("PARAM_MISSING", "登录账号不能为空");
         }
 
-        // ==================== 1. 查找用户角色和部门 ====================
+        // ==================== 1. 根据 account 查询 staff_code、role_id、dept_id ====================
         MspUser user = mspUserMapper.selectByAccount(userAccount);
         if (user == null) {
             log.warn("User not found by userAccount={}", userAccount);
@@ -137,24 +141,26 @@ public class CustomerServiceImpl implements CustomerService {
         }
 
         String staffCode = user.getStaffCode();
+        // role_id 可能为多个，用逗号分隔
         Set<Integer> roleIds = parseCommaSeparated(user.getRoleId());
-        List<Integer> deptIds = parseCommaSeparatedToList(user.getDeptId());
+        // dept_id 只有一个数
+        Integer deptId = safeParseInt(user.getDeptId());
 
-        log.debug("User found: userAccount={}, staffCode={}, roleIds={}, deptIds={}", userAccount, staffCode, roleIds, deptIds);
+        log.debug("User found: userAccount={}, staffCode={}, roleIds={}, deptId={}", userAccount, staffCode, roleIds, deptId);
 
         // ==================== 2. 通过 dept_id 查找 institution_no ====================
-        List<String> institutionNos = deptIds.stream()
-                .map(id -> mspDeptMapper.selectActiveById(id))
-                .filter(Objects::nonNull)
-                .map(dept -> dept.getInstitutionNo() != null ? dept.getInstitutionNo().toString() : null)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        String institutionNo = null;
+        if (deptId != null) {
+            MspDept dept = mspDeptMapper.selectActiveById(deptId);
+            if (dept != null && dept.getInstitutionNo() != null) {
+                institutionNo = dept.getInstitutionNo().toString();
+            }
+        }
+        log.debug("Institution number from department: {}", institutionNo);
 
-        log.debug("Institution numbers from departments: {}", institutionNos);
-
-        // ==================== 3. 判断是否为分行经办人员（科技金融创新中心）====================
+        // ==================== 3. 分行经办人员 + 科技金融创新中心(443536363) ====================
         if (roleIds.contains(RoleEnum.BRANCH_OFFICE_HANDLER.getRoleId())
-                && institutionNos.contains("443536363")) {
+                && "443536363".equals(institutionNo)) {
             log.info("Cust ownership granted: userAccount={}, staffCode={}, role=分行经办人员({}), institutionNo=443536363",
                     userAccount, staffCode, RoleEnum.BRANCH_OFFICE_HANDLER.getRoleId());
             updateOwnership(taskId, "1");
@@ -169,30 +175,31 @@ public class CustomerServiceImpl implements CustomerService {
             return false;
         }
 
-        String custInstNo = profile.getCstMngaccInstSuprInsid();   // 管户支行编号
-        String custMgrId = profile.getCstMngaccCstmgrId();         // 管户客户经理编号（对应 msp_user.staff_code）
-
+        // 管户支行编号、管户客户经理编号（对应 msp_user.staff_code）
+        String custInstNo = profile.getCstMngaccInstSuprInsid();
+        String custMgrId = profile.getCstMngaccCstmgrId();
         log.debug("Customer profile: cstId={}, cstMngaccInstSuprInsid={}, cstMngaccCstmgrId={}",
                 cstId, custInstNo, custMgrId);
 
-        // ==================== 5. 匹配管户支行编号 ====================
-        boolean instMatched = custInstNo != null && institutionNos.contains(custInstNo);
-
+        // ==================== 5. 管户支行编号匹配 + 支行科室负责人 ====================
+        // 用 cst_mngacc_inst_supr_insid 匹配 institution_no，一致且 role_id 含支行科室负责人 → true
+        boolean instMatched = custInstNo != null && custInstNo.equals(institutionNo);
         if (instMatched && roleIds.contains(RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleId())) {
             log.info("Cust ownership granted: userAccount={}, staffCode={}, role=支行科室负责人({}), instMatched=true",
                     userAccount, staffCode, RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleId());
             updateOwnership(taskId, "1");
             return true;
         }
+        // 不一致，或一致但非支行科室负责人 → 进入下一步
 
-        // ==================== 6. 匹配管户客户经理编号（cst_mngacc_cstmgr_id 对应 msp_user.staff_code）====================
+        // ==================== 6. 管户客户经理编号匹配 staff_code ====================
         if (staffCode != null && staffCode.equals(custMgrId)) {
             log.info("Cust ownership granted: userAccount={}, staffCode={}, matched as account manager", userAccount, staffCode);
             updateOwnership(taskId, "1");
             return true;
         }
 
-        // ==================== 7. 无管户权 ====================
+        // ==================== 7. 其余情况均为无管户权 ====================
         log.info("Cust ownership denied: userAccount={}, staffCode={}, cstId={}", userAccount, staffCode, cstId);
         updateOwnership(taskId, "0");
         return false;
@@ -211,21 +218,6 @@ public class CustomerServiceImpl implements CustomerService {
                 .map(this::safeParseInt)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-    }
-
-    /**
-     * 将逗号分隔的 ID 字符串解析为 Integer 列表（保留顺序）。
-     */
-    private List<Integer> parseCommaSeparatedToList(String ids) {
-        if (!StringUtils.hasText(ids)) {
-            return List.of();
-        }
-        return Arrays.stream(ids.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(this::safeParseInt)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
     }
 
     private Integer safeParseInt(String s) {

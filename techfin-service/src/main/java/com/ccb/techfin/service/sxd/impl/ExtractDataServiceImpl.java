@@ -29,6 +29,8 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -100,14 +102,16 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             "净利润", Arrays.asList("净利润")
     );
 
-    /** 占位符名称 -> CustomerProfile 字段值提取函数 */
+    /** 占位符名称 -> CustomerProfile 字段值提取函数（含格式化转换） */
     private static final Map<String, Function<CustomerProfile, String>> PROFILE_FIELD_GETTERS = Map.ofEntries(
             Map.entry("cst_nm", CustomerProfile::getCstNm),
             Map.entry("credit_code", CustomerProfile::getCreditCode),
-            Map.entry("fd_dt", CustomerProfile::getFdDt),
+            // fd_dt：数据库存储为 ddMMMyyyy（如 15Mar2015），填充时转为 xx年xx月xx日
+            Map.entry("fd_dt", p -> formatDateZh(p.getFdDt())),
             Map.entry("lgl_rprs_nm", CustomerProfile::getLglRprsNm),
-            Map.entry("rgst_cpamt", CustomerProfile::getRgstCpamt),
-            Map.entry("arcptl_cpamt", CustomerProfile::getArcptlCpamt),
+            // 金额字段：数据库以元为单位存储，填充时转为以万为单位（如 220000.00 → 22.00）
+            Map.entry("rgst_cpamt", p -> formatAmountWan(p.getRgstCpamt())),
+            Map.entry("arcptl_cpamt", p -> formatAmountWan(p.getArcptlCpamt())),
             Map.entry("cpct_tpcd", CustomerProfile::getCpctTpcd),
             Map.entry("entp_sz_cd", CustomerProfile::getEntpSzCd),
             Map.entry("entp_bliy", CustomerProfile::getEntpBliy),
@@ -120,33 +124,97 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             Map.entry("entp_prct_new_tp_ptnt_num", CustomerProfile::getEntpPrctNewTpPtntNum),
             Map.entry("entp_ivt_ptnt_num", CustomerProfile::getEntpIvtPtntNum),
             Map.entry("clst_5yr_inn_rs_wcopr_num", CustomerProfile::getClst5YrInnRsWcoprNum),
-            Map.entry("if_loan", CustomerProfile::getIfLoan),
+            // if_loan：1 → 存量，0 → 新增
+            Map.entry("if_loan", p -> formatLoanStatus(p.getIfLoan())),
             Map.entry("product_name", CustomerProfile::getProductName),
-            Map.entry("loan_amount", CustomerProfile::getLoanAmount),
+            Map.entry("loan_amount", p -> formatAmountWan(p.getLoanAmount())),
+            // loan_term：以月为单位，填充原值
             Map.entry("loan_term", CustomerProfile::getLoanTerm),
-            Map.entry("loan_balance", CustomerProfile::getLoanBalance),
-            Map.entry("dep_bal", CustomerProfile::getDepBal),
-            Map.entry("dep_bal_dt", CustomerProfile::getDepBalDt),
-            Map.entry("dep_aadbal", CustomerProfile::getDepAadbal),
-            Map.entry("acc_start_dt", CustomerProfile::getAccStartDt),
+            Map.entry("loan_balance", p -> formatAmountWan(p.getLoanBalance())),
+            Map.entry("dep_bal", p -> formatAmountWan(p.getDepBal())),
+            // dep_bal_dt：ddMMMyyyy → xx年xx月xx日
+            Map.entry("dep_bal_dt", p -> formatDateZh(p.getDepBalDt())),
+            Map.entry("dep_aadbal", p -> formatAmountWan(p.getDepAadbal())),
+            // acc_start_dt：ddMMMyyyy → xx年xx月xx日
+            Map.entry("acc_start_dt", p -> formatDateZh(p.getAccStartDt())),
             Map.entry("acc_type", CustomerProfile::getAccType),
             Map.entry("isug_pnum", CustomerProfile::getIsugPnum),
-            Map.entry("avg_12_isug_amt", CustomerProfile::getAvg12IsugAmt),
-            Map.entry("if_yuqi", CustomerProfile::getIfYuqi),
-            Map.entry("ltgtrltd_ind", CustomerProfile::getLtgtrltdInd),
-            Map.entry("if_rad_alarm", CustomerProfile::getIfRadAlarm)
+            Map.entry("avg_12_isug_amt", p -> formatAmountWan(p.getAvg12IsugAmt())),
+            // 0/1 → 否/是
+            Map.entry("if_yuqi", p -> formatYesNo(p.getIfYuqi())),
+            Map.entry("ltgtrltd_ind", p -> formatYesNo(p.getLtgtrltdInd())),
+            Map.entry("if_rad_alarm", p -> formatYesNo(p.getIfRadAlarm()))
     );
 
-    /** 无管户权时需清空的敏感字段占位符 */
-    private static final Set<String> OWNERSHIP_SENSITIVE_FIELDS = Set.of(
-            "tech_tag", "tech_flow", "kc_score",
-            "entp_ptnt_num", "entp_prct_new_tp_ptnt_num", "entp_ivt_ptnt_num",
-            "clst_5yr_inn_rs_wcopr_num",
-            "if_loan", "product_name", "loan_amount", "loan_term", "loan_balance",
-            "dep_bal", "dep_bal_dt", "dep_aadbal",
-            "acc_start_dt", "acc_type", "isug_pnum", "avg_12_isug_amt",
-            "if_yuqi", "ltgtrltd_ind", "if_rad_alarm"
-    );
+    /** 填充到文档的目标日期格式 */
+    private static final DateTimeFormatter DOC_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy年M月d日");
+    /** 金额：元转万元后的输出格式（2 位小数） */
+    private static final DecimalFormat WAN_FORMAT = new DecimalFormat("0.00");
+
+    /**
+     * 将数据库日期（dMMMyyyy 或 ddMMMyyyy，如 5Mar2015 / 15Mar2015）格式化为 xx年xx月xx日。
+     * 解析失败时原样返回。
+     */
+    private static String formatDateZh(String raw) {
+        if (!StringUtils.hasText(raw)) return "";
+        String s = raw.trim();
+        // 日可能是一位（5Mar2015）或两位（15Mar2015），用 "d" 兼容两种情况
+        DateTimeFormatter[] formatters = new DateTimeFormatter[]{
+                DateTimeFormatter.ofPattern("dMMMyyyy", java.util.Locale.ENGLISH),
+                DateTimeFormatter.ofPattern("ddMMMyyyy", java.util.Locale.ENGLISH)
+        };
+        for (DateTimeFormatter f : formatters) {
+            try {
+                return LocalDate.parse(s, f).format(DOC_DATE_FORMATTER);
+            } catch (Exception ignore) {
+            }
+        }
+        // 兜底：尝试标准 yyyy-MM-dd 等格式
+        try {
+            return LocalDate.parse(s).format(DOC_DATE_FORMATTER);
+        } catch (Exception e) {
+            return raw;
+        }
+    }
+
+    /**
+     * 将以元为单位的金额字符串转为以万元为单位的字符串（2 位小数）。
+     * 如 "220000.00" → "22.00"。无法解析时原样返回。
+     */
+    private static String formatAmountWan(String raw) {
+        if (!StringUtils.hasText(raw)) return "";
+        try {
+            BigDecimal yuan = new BigDecimal(raw.trim());
+            BigDecimal wan = yuan.divide(TEN_THOUSAND, 2, RoundingMode.HALF_UP);
+            return WAN_FORMAT.format(wan);
+        } catch (Exception e) {
+            return raw;
+        }
+    }
+
+    /**
+     * if_loan 转换：1 → 存量，0 → 新增，其他值原样返回。
+     */
+    private static String formatLoanStatus(String raw) {
+        if (!StringUtils.hasText(raw)) return "";
+        return switch (raw.trim()) {
+            case "1" -> "存量";
+            case "0" -> "新增";
+            default -> raw;
+        };
+    }
+
+    /**
+     * 0/1 标志位转换为 否/是。其他值原样返回。
+     */
+    private static String formatYesNo(String raw) {
+        if (!StringUtils.hasText(raw)) return "";
+        return switch (raw.trim()) {
+            case "1" -> "是";
+            case "0" -> "否";
+            default -> raw;
+        };
+    }
 
     private static final String ITEM_ASSET_TOTAL = "资产总计";
     private static final String ITEM_LIABILITY_TOTAL = "负债合计";
@@ -1079,6 +1147,10 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     /**
      * 替换文档段落中 {{{{field_name}}}} 格式的占位符为实际客户信息字段值。
      * 使用 {@link XWPFParagraph#getText()} 拼接所有 run 后再替换，避免占位符被拆分到多个 run 中无法匹配。
+     * <p>
+     * 管户权规则：{{act_cntlr_nm}} 始终从 kjjr_ai_sxd_record.act_cntlr_nm 读取，不受管户权影响；
+     * 其余从 kjjr_ai_sxd_profile 读取的占位符，has_ownership=1 时按正常值填充，
+     * has_ownership=0 或未设置时统一替换为空字符串。
      */
     private void replaceProfilePlaceholders(XWPFDocument doc, CustomerProfile profile, String actCntlrNm, boolean hasOwnership) {
         for (XWPFParagraph para : doc.getParagraphs()) {
@@ -1091,7 +1163,8 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                 String placeholder = "{{" + entry.getKey() + "}}";
                 if (replaced.contains(placeholder)) {
                     String value;
-                    if (!hasOwnership && OWNERSHIP_SENSITIVE_FIELDS.contains(entry.getKey())) {
+                    if (!hasOwnership) {
+                        // 无管户权或未设置：所有 sxd_profile 字段占位符替换为空字符串
                         value = "";
                     } else {
                         value = profile != null ? entry.getValue().apply(profile) : "";
@@ -1101,7 +1174,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                     changed = true;
                 }
             }
-            // 实控人姓名从 sxd_record 表读取
+            // 实控人姓名从 kjjr_ai_sxd_record 表读取，不受管户权影响
             if (replaced.contains("{{act_cntlr_nm}}")) {
                 replaced = replaced.replace("{{act_cntlr_nm}}",
                         actCntlrNm != null ? actCntlrNm : "");

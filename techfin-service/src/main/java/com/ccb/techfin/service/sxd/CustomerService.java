@@ -11,12 +11,13 @@ import com.ccb.techfin.model.sxd.entity.CustomerProfile;
 public interface CustomerService {
 
     /**
-     * 根据客户编号查询实控人姓名
+     * 查询实控人姓名
      *
-     * @param cstId 客户编号
-     * @return 实控人姓名
+     * @param taskId 任务 ID，用于从 kjjr_ai_sxd_record 校验管户权（has_ownership = '1'）
+     * @param cstId  客户编号，用于查询 kjjr_ai_sxd_profile 实控人姓名
+     * @return 有管户权时返回实控人姓名，无管户权时返回空字符串
      */
-    String getControllerName(String cstId);
+    String getControllerName(String taskId, String cstId);
 
     /**
      * 根据客户编号查询客户完整信息
