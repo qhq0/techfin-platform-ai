@@ -128,7 +128,7 @@ respBody.getDataAs(DocBatchAddData.class);
 - 解密后的 `userAccount` 存入 `request.setAttribute("userAccount", ...)` 供业务层使用
 
 相关代码：
-- `TokenInterceptor` — 拦截 `/sxd/**` 路径，RSA 私钥解密 → 解析 JSON → 校验 2 小时有效期 → 公钥重新加密刷新 token
+- `TokenInterceptor` — 拦截 `/sxd/**` 路径，RSA 私钥解密 → 解析 JSON → 校验有效期（通过 `rsa.token-validity-ms` 配置，默认 2 小时） → 公钥重新加密刷新 token
 - `RsaUtils` — RSA 加解密工具类（`init` 初始化私钥+公钥、`decrypt` 解密、`encrypt` 加密刷新）
 - `WebMvcConfig` — 注册拦截器
 - 配置文件：`rsa.private-key` — RSA 私钥（PKCS8 PEM，含头尾）；`rsa.public-key` — RSA 公钥（X.509 PEM，含头尾）
@@ -210,6 +210,9 @@ Controller base: `/sxd`
 - `api.default-token` — 外部 API 鉴权 token
 - `rsa.private-key` — 前端 Token RSA 解密私钥（PKCS8 PEM）
 - `rsa.public-key` — 前端 Token RSA 加密公钥（X.509 PEM，用于刷新 token）
+- `rsa.token-validity-ms` — Token 有效期（毫秒，默认 7200000，即 2 小时）
+- `sxd.cleanup.cron` — 定时清理任务 cron 表达式（默认 `0 0 2 * * ?`，每天凌晨 2:00）
+- `sxd.cleanup.orphan-attachment-retention-hours` — 孤立附件保留时长（小时，默认 24）
 - `mybatis-plus.configuration.log-impl` — SQL 日志
 
 配置类：`ApiProperties`（prefix=`api`）、`FileUploadConfig`（prefix=`file.upload`）

@@ -47,18 +47,20 @@ import java.util.Map;
 @Component
 public class TokenInterceptor implements HandlerInterceptor {
 
-    /** Token 有效期：2 小时（毫秒） */
-    private static final long TOKEN_VALIDITY_MS = 2 * 60 * 60 * 1000L;
+    /** Token 有效期（毫秒），从配置读取，默认 2 小时 */
+    private final long tokenValidityMs;
 
     private final ObjectMapper objectMapper;
 
     public TokenInterceptor(ObjectMapper objectMapper,
                             @Value("${rsa.private-key}") String rsaPrivateKey,
-                            @Value("${rsa.public-key}") String rsaPublicKey) {
+                            @Value("${rsa.public-key}") String rsaPublicKey,
+                            @Value("${rsa.token-validity-ms}") long tokenValidityMs) {
         this.objectMapper = objectMapper;
+        this.tokenValidityMs = tokenValidityMs;
         try {
             RsaUtils.init(rsaPrivateKey, rsaPublicKey);
-            log.info("RSA 密钥初始化完成（私钥解密 + 公钥加密）");
+            log.info("RSA 密钥初始化完成（私钥解密 + 公钥加密），Token 有效期={}ms", tokenValidityMs);
         } catch (Exception e) {
             log.error("RSA 密钥初始化失败，请检查 rsa.private-key / rsa.public-key 配置", e);
             throw new RuntimeException("RSA 密钥初始化失败", e);
@@ -108,7 +110,7 @@ public class TokenInterceptor implements HandlerInterceptor {
             // 3. 校验 2 小时有效期
             long now = System.currentTimeMillis();
             long elapsed = now - exp;
-            if (elapsed > TOKEN_VALIDITY_MS) {
+            if (elapsed > tokenValidityMs) {
                 log.warn("Token 已过期: userAccount={}, exp={}, now={}, elapsed={}ms",
                         userAccount, exp, now, elapsed);
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

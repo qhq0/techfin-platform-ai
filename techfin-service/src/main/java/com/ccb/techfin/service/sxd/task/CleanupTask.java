@@ -13,6 +13,7 @@ import com.ccb.techfin.service.sxd.config.ApiProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -45,10 +46,13 @@ public class CleanupTask {
     private final ApiProperties apiProperties;
     private final RestTemplate restTemplate;
 
+    @Value("${sxd.cleanup.orphan-attachment-retention-hours}")
+    private int retentionHours;
+
     /**
      * 每天凌晨 2:00 执行清理。
      */
-    @Scheduled(cron = "0 0 2 * * ?")
+    @Scheduled(cron = "${sxd.cleanup.cron}")
     public void cleanup() {
         log.info("Scheduled cleanup task started");
         cleanupOrphanAttachments();
@@ -61,7 +65,7 @@ public class CleanupTask {
      * 清理 sxd_att 中创建时间超过 24 小时且未被引用的孤立附件记录。
      */
     private void cleanupOrphanAttachments() {
-        LocalDateTime deadline = LocalDateTime.now().minusHours(24);
+        LocalDateTime deadline = LocalDateTime.now().minusHours(retentionHours);
         List<SxdAtt> oldRecords = attachmentMapper.selectList(
                 new LambdaQueryWrapper<SxdAtt>()
                         .isNotNull(SxdAtt::getCreatedAt)
@@ -78,7 +82,7 @@ public class CleanupTask {
         int deleted = attachmentMapper.delete(
                 new LambdaQueryWrapper<SxdAtt>()
                         .in(SxdAtt::getId, ids));
-        log.info("Cleaned up {} orphan attachment(s) older than 24h", deleted);
+        log.info("Cleaned up {} orphan attachment(s) older than {}h", deleted, retentionHours);
     }
 
     /**
