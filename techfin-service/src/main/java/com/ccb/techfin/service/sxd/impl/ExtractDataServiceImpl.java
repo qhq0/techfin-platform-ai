@@ -1153,9 +1153,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * has_ownership=0 或未设置时统一替换为空字符串。
      */
     private void replaceProfilePlaceholders(XWPFDocument doc, CustomerProfile profile, String actCntlrNm, boolean hasOwnership) {
-        for (XWPFParagraph para : doc.getParagraphs()) {
+        forEachParagraph(doc, para -> {
             String paraText = para.getText();
-            if (paraText == null || !paraText.contains("{{")) continue;
+            if (paraText == null || !paraText.contains("{{")) return;
 
             String replaced = paraText;
             boolean changed = false;
@@ -1187,7 +1187,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                 }
                 para.createRun().setText(replaced, 0);
             }
-        }
+        });
     }
 
     /**
@@ -1223,9 +1223,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 使用 {@link XWPFParagraph#getText()} 拼接所有 run 后再替换，避免占位符被拆分到多个 run 中无法匹配。
      */
     private void replaceExtractDataPlaceholders(XWPFDocument doc, Map<String, String> extractTextMap) {
-        for (XWPFParagraph para : doc.getParagraphs()) {
+        forEachParagraph(doc, para -> {
             String paraText = para.getText();
-            if (paraText == null || !paraText.contains("{{")) continue;
+            if (paraText == null || !paraText.contains("{{")) return;
 
             String replaced = paraText;
             boolean changed = false;
@@ -1244,7 +1244,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                 }
                 para.createRun().setText(replaced, 0);
             }
-        }
+        });
     }
 
     /**
@@ -1277,12 +1277,36 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 将文档中指定占位符替换为给定的文本。
      */
     private void replacePlaceholderText(XWPFDocument doc, String placeholder, String replacement) {
-        for (XWPFParagraph para : doc.getParagraphs()) {
+        forEachParagraph(doc, para -> {
             for (XWPFRun run : para.getRuns()) {
                 String text = run.getText(0);
                 if (text != null && text.contains(placeholder)) {
                     run.setText(text.replace(placeholder, replacement), 0);
                     return;
+                }
+            }
+        });
+    }
+
+    /**
+     * 遍历文档中所有段落，包括顶层段落和表格单元格内的段落。
+     * 解决 POI 中 doc.getParagraphs() 不包含表格内段落的问题。
+     *
+     * @param doc      XWPFDocument 文档
+     * @param consumer 对每个段落执行的操作
+     */
+    private void forEachParagraph(XWPFDocument doc, java.util.function.Consumer<XWPFParagraph> consumer) {
+        // 1. 遍历文档顶层段落
+        for (XWPFParagraph para : doc.getParagraphs()) {
+            consumer.accept(para);
+        }
+        // 2. 遍历所有表格单元格内的段落
+        for (XWPFTable table : doc.getTables()) {
+            for (XWPFTableRow row : table.getRows()) {
+                for (XWPFTableCell cell : row.getTableCells()) {
+                    for (XWPFParagraph para : cell.getParagraphs()) {
+                        consumer.accept(para);
+                    }
                 }
             }
         }

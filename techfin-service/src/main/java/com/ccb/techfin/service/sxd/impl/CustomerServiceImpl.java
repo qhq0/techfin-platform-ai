@@ -58,12 +58,16 @@ public class CustomerServiceImpl implements CustomerService {
         String name = profile.getActCntlrNm();
 
         // 2. 用 taskId（主键）精确查询 kjjr_ai_sxd_record.has_ownership，值为 '1' 才返回姓名，否则返回空字符串
+        //    无论是否有管户权，都将查询到的实控人姓名回填到 kjjr_ai_sxd_record.act_cntlr_nm
         SxdRecord record = sxdMapper.selectById(taskId);
         if (record == null) {
             log.warn("Task not found for controller name query: taskId={}", taskId);
             throw new BusinessException("TASK_NOT_FOUND",
                     "任务 [" + taskId + "] 不存在");
         }
+
+        record.setActCntlrNm(name);
+        sxdMapper.updateById(record);
 
         if (!"1".equals(record.getHasOwnership())) {
             log.info("Customer controller name query denied: taskId={}, cstId={}, hasOwnership={}",
