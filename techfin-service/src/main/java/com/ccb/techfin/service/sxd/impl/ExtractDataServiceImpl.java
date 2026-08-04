@@ -515,6 +515,16 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                     "任务 [" + taskId + "] 不存在");
         }
 
+        // ============ 校验 cstId 与任务关联的客户编号一致 ============
+        // 防止前端篡改 cstId 越权查询其他客户信息
+        if (record.getCstId() != null && !record.getCstId().isEmpty()
+                && !record.getCstId().equals(cstId)) {
+            log.warn("CstId mismatch: taskId={}, recordCstId={}, requestCstId={}",
+                    taskId, record.getCstId(), cstId);
+            throw new BusinessException("CST_ID_MISMATCH",
+                    "客户编号与任务不匹配");
+        }
+
         // ============ 查询企业信息 ============
         CustomerProfile customerProfile = null;
         if (cstId != null && !cstId.isEmpty()) {
