@@ -28,7 +28,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -102,6 +101,17 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             "净利润", Arrays.asList("净利润")
     );
 
+    private static final String ITEM_ASSET_TOTAL = "资产总计";
+    private static final String ITEM_LIABILITY_TOTAL = "负债合计";
+
+    private static final String ITEM_REVENUE = "营业收入";
+    private static final String ITEM_COST = "营业成本";
+    private static final String ITEM_NET_PROFIT = "净利润";
+    private static final String ITEM_RD_EXPENSE = "研发费用";
+
+    /** 元 转 万元 */
+    private static final BigDecimal TEN_THOUSAND = new BigDecimal("10000");
+
     /** 占位符名称 -> CustomerProfile 字段值提取函数（含格式化转换） */
     private static final Map<String, Function<CustomerProfile, String>> PROFILE_FIELD_GETTERS = Map.ofEntries(
             Map.entry("cst_nm", CustomerProfile::getCstNm),
@@ -148,8 +158,12 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /** 填充到文档的目标日期格式 */
     private static final DateTimeFormatter DOC_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy年M月d日");
-    /** 金额：元转万元后的输出格式（2 位小数） */
-    private static final DecimalFormat WAN_FORMAT = new DecimalFormat("0.00");
+    /** 解析 dMMMyyyy（如 5Mar2015） */
+    private static final DateTimeFormatter DOC_DATE_PARSE_SINGLE_DAY =
+            DateTimeFormatter.ofPattern("dMMMyyyy", Locale.ENGLISH);
+    /** 解析 ddMMMyyyy（如 15Mar2015） */
+    private static final DateTimeFormatter DOC_DATE_PARSE_DOUBLE_DAY =
+            DateTimeFormatter.ofPattern("ddMMMyyyy", Locale.ENGLISH);
 
     /**
      * 将数据库日期（dMMMyyyy 或 ddMMMyyyy，如 5Mar2015 / 15Mar2015）格式化为 xx年xx月xx日。
@@ -160,8 +174,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         String s = raw.trim();
         // 日可能是一位（5Mar2015）或两位（15Mar2015），用 "d" 兼容两种情况
         DateTimeFormatter[] formatters = new DateTimeFormatter[]{
-                DateTimeFormatter.ofPattern("dMMMyyyy", java.util.Locale.ENGLISH),
-                DateTimeFormatter.ofPattern("ddMMMyyyy", java.util.Locale.ENGLISH)
+                DOC_DATE_PARSE_SINGLE_DAY, DOC_DATE_PARSE_DOUBLE_DAY
         };
         for (DateTimeFormatter f : formatters) {
             try {
@@ -186,7 +199,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         try {
             BigDecimal yuan = new BigDecimal(raw.trim());
             BigDecimal wan = yuan.divide(TEN_THOUSAND, 2, RoundingMode.HALF_UP);
-            return WAN_FORMAT.format(wan);
+            return wan.toPlainString();
         } catch (Exception e) {
             return raw;
         }
@@ -216,17 +229,6 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         };
     }
 
-    private static final String ITEM_ASSET_TOTAL = "资产总计";
-    private static final String ITEM_LIABILITY_TOTAL = "负债合计";
-
-    private static final String ITEM_REVENUE = "营业收入";
-    private static final String ITEM_COST = "营业成本";
-    private static final String ITEM_NET_PROFIT = "净利润";
-    private static final String ITEM_RD_EXPENSE = "研发费用";
-
-    /** 元 转 万元 */
-    private static final BigDecimal TEN_THOUSAND = new BigDecimal("10000");
-
     /** 每个 tableName 对应的文本提取函数 */
     private static final Map<String, Function<BpExtractRecord, String>> TEXT_EXTRACTORS = Map.of(
             "dib_manage_company_profile", BpExtractRecord::getCompanyProfileText,
@@ -246,10 +248,10 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      */
     private static String formatDirectorResume(BpExtractRecord r) {
         StringBuilder sb = new StringBuilder();
-        if (r.getPosition() != null && !r.getPosition().isEmpty()) {
+        if (StringUtils.hasText(r.getPosition())) {
             sb.append("职位：").append(r.getPosition());
         }
-        if (r.getResume() != null && !r.getResume().isEmpty()) {
+        if (StringUtils.hasText(r.getResume())) {
             if (sb.length() > 0) sb.append("，");
             sb.append("简介：").append(r.getResume());
         }
@@ -456,26 +458,31 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     }
 
     /**
+     * POST 外部 queryData 接口（docQueryDataUrl），返回原始响应体。
+     * 异常交由调用方处理（各调用方的失败/异常语义不同）。
+     */
+    private ExternalResponse postQueryData(Long docId, String tableName, String token) {
+        BpExtractRequest request = new BpExtractRequest(docId, tableName);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (StringUtils.hasText(token)) {
+            headers.set("c1-token", token);
+        }
+        HttpEntity<BpExtractRequest> requestEntity = new HttpEntity<>(request, headers);
+        ResponseEntity<ExternalResponse> response = restTemplate.exchange(
+                apiProperties.getDocQueryDataUrl(),
+                HttpMethod.POST,
+                requestEntity,
+                ExternalResponse.class);
+        return response.getBody();
+    }
+
+    /**
      * 调用外部提取数据查询 API，返回该 tableName 下的文本列表。
      */
     private List<String> queryBusinessExtractDataByTable(Long docId, String tableName, String token) {
-        BpExtractRequest request = new BpExtractRequest(docId, tableName);
-
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            if (StringUtils.hasText(token)) {
-                headers.set("c1-token", token);
-            }
-
-            HttpEntity<BpExtractRequest> requestEntity = new HttpEntity<>(request, headers);
-            ResponseEntity<ExternalResponse> response = restTemplate.exchange(
-                    apiProperties.getDocQueryDataUrl(),
-                    HttpMethod.POST,
-                    requestEntity,
-                    ExternalResponse.class);
-
-            ExternalResponse respBody = response.getBody();
+            ExternalResponse respBody = postQueryData(docId, tableName, token);
             if (respBody == null || !respBody.isSuccess() || respBody.getData() == null) {
                 log.warn("Query extract data returned empty for docId={}, tableName={}: {}",
                         docId, tableName, respBody != null ? respBody.getMessage() : "null");
@@ -499,8 +506,6 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                     .filter(s -> !s.trim().isEmpty())
                     .collect(Collectors.toList());
 
-        } catch (BusinessException e) {
-            throw e;
         } catch (Exception e) {
             log.warn("Failed to query extract data for docId={}, tableName={}: {}", docId, tableName, e.getMessage());
             return Collections.emptyList();
@@ -627,7 +632,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                     }
                 }
                 // 利用 lastAmount 补全缺失的上一期日期列
-                fillLastAmountColumn(bsRecords, bsItemDateValues, bsDateColumns, dateCol, reportDate);
+                fillLastAmountColumn(bsRecords, bsItemDateValues, bsDateColumns, reportDate);
             }
 
             // 利润表聚合
@@ -644,7 +649,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                     }
                 }
                 // 利用 lastAmount 补全缺失的上一期日期列
-                fillLastAmountColumnForProfit(psRecords, psItemDateValues, psDateColumns, dateCol, reportDate);
+                fillLastAmountColumnForProfit(psRecords, psItemDateValues, psDateColumns, reportDate);
             }
         }
 
@@ -777,21 +782,8 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * @return "1"(单一) 或 "2"(合并)，查询失败返回 null
      */
     private String queryFinanceReportScope(Long docId, String token) {
-        BpExtractRequest request = new BpExtractRequest(docId,
-                "dib_intervening_y_auditreport_jh");
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            if (StringUtils.hasText(token)) {
-                headers.set("c1-token", token);
-            }
-            HttpEntity<BpExtractRequest> requestEntity = new HttpEntity<>(request, headers);
-            ResponseEntity<ExternalResponse> response = restTemplate.exchange(
-                    apiProperties.getDocQueryDataUrl(),
-                    HttpMethod.POST,
-                    requestEntity,
-                    ExternalResponse.class);
-            ExternalResponse respBody = response.getBody();
+            ExternalResponse respBody = postQueryData(docId, "dib_intervening_y_auditreport_jh", token);
             if (respBody == null || !respBody.isSuccess() || respBody.getData() == null) {
                 log.warn("Failed to query audit report for docId={}", docId);
                 return null;
@@ -814,20 +806,8 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 同时用于资产负债表和利润表查询。
      */
     private List<FinanceRecord> queryFinanceData(Long docId, String tableName, String token) {
-        BpExtractRequest request = new BpExtractRequest(docId, tableName);
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            if (StringUtils.hasText(token)) {
-                headers.set("c1-token", token);
-            }
-            HttpEntity<BpExtractRequest> requestEntity = new HttpEntity<>(request, headers);
-            ResponseEntity<ExternalResponse> response = restTemplate.exchange(
-                    apiProperties.getDocQueryDataUrl(),
-                    HttpMethod.POST,
-                    requestEntity,
-                    ExternalResponse.class);
-            ExternalResponse respBody = response.getBody();
+            ExternalResponse respBody = postQueryData(docId, tableName, token);
             if (respBody == null || !respBody.isSuccess() || respBody.getData() == null) {
                 throw new BusinessException("DOC_QUERY_FAILED",
                         "财务报表数据查询失败：" + (respBody != null ? respBody.getMessage() : "未知错误"));
@@ -947,7 +927,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     private void fillLastAmountColumn(List<FinanceRecord> records,
                                       Map<String, Map<String, BigDecimal>> itemDateValues,
                                       List<String> dateColumns,
-                                      String currentDateCol, String reportDate) {
+                                      String reportDate) {
         String prevDateCol = derivePrevDateCol(reportDate);
         if (prevDateCol == null || dateColumns.contains(prevDateCol)) return;
 
@@ -974,7 +954,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     private void fillLastAmountColumnForProfit(List<FinanceRecord> records,
                                                Map<String, Map<String, BigDecimal>> itemDateValues,
                                                List<String> dateColumns,
-                                               String currentDateCol, String reportDate) {
+                                               String reportDate) {
         String prevDateCol = derivePrevDateCol(reportDate);
         if (prevDateCol == null || dateColumns.contains(prevDateCol)) return;
 
@@ -1030,25 +1010,36 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     }
 
     /**
+     * 计算比率数值（numerator / denominator × 100）。null 表示无法计算。
+     * 任一参数为 null 或 denominator=0 时返回 null。
+     */
+    private static BigDecimal calcRatio(BigDecimal numerator, BigDecimal denominator) {
+        if (numerator == null || denominator == null || denominator.compareTo(BigDecimal.ZERO) == 0) {
+            return null;
+        }
+        return numerator.divide(denominator, 4, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"));
+    }
+
+    /**
+     * 将已计算的比率值格式化为百分比字符串（2 位小数）。null → "-"
+     */
+    private static String formatRatioPercent(BigDecimal ratio) {
+        return ratio != null ? String.format("%.2f%%", ratio) : "-";
+    }
+
+    /**
      * 计算资产负债率并格式化为百分比。负债合计 / 资产总计 * 100%
      */
     private String formatLiabilityRatio(BigDecimal assetTotal, BigDecimal liabilityTotal) {
-        if (assetTotal == null || liabilityTotal == null) return "-";
-        if (assetTotal.compareTo(BigDecimal.ZERO) == 0) return "-";
-        BigDecimal ratio = liabilityTotal.divide(assetTotal, 4, RoundingMode.HALF_UP)
-                .multiply(new BigDecimal("100"));
-        return String.format("%.2f%%", ratio);
+        return formatRatio(liabilityTotal, assetTotal);
     }
 
     /**
      * 计算资产负债率的数值（用于增长率计算）。null 表示无法计算。
      */
     private BigDecimal calcLiabilityRatio(BigDecimal assetTotal, BigDecimal liabilityTotal) {
-        if (assetTotal == null || liabilityTotal == null || assetTotal.compareTo(BigDecimal.ZERO) == 0) {
-            return null;
-        }
-        return liabilityTotal.divide(assetTotal, 4, RoundingMode.HALF_UP)
-                .multiply(new BigDecimal("100"));
+        return calcRatio(liabilityTotal, assetTotal);
     }
 
     // ========== 利润表辅助方法 ==========
@@ -1058,27 +1049,27 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 如"营业收入"匹配 item_standard="其中：营业收入"。
      */
     private BigDecimal findProfitItemValue(List<FinanceRecord> records, String displayName) {
-        List<String> keys = PROFIT_ITEM_SEARCH_KEYS.get(displayName);
-        if (keys == null || records == null) return null;
-
-        for (FinanceRecord r : records) {
-            if (r.getItemStandard() != null && keys.contains(r.getItemStandard())) {
-                return r.getCurrentAmount();
-            }
-        }
-        return null;
+        return findProfitItemAmount(records, displayName, FinanceRecord::getCurrentAmount);
     }
 
     /**
      * 从利润表记录中按 item_standard 匹配指定科目的 last_amount。
      */
     private BigDecimal findProfitItemLastAmount(List<FinanceRecord> records, String displayName) {
+        return findProfitItemAmount(records, displayName, FinanceRecord::getLastAmount);
+    }
+
+    /**
+     * 按 item_standard 匹配指定科目的金额值（current_amount 或 last_amount）。
+     */
+    private BigDecimal findProfitItemAmount(List<FinanceRecord> records, String displayName,
+                                            Function<FinanceRecord, BigDecimal> amountGetter) {
         List<String> keys = PROFIT_ITEM_SEARCH_KEYS.get(displayName);
         if (keys == null || records == null) return null;
 
         for (FinanceRecord r : records) {
             if (r.getItemStandard() != null && keys.contains(r.getItemStandard())) {
-                return r.getLastAmount();
+                return amountGetter.apply(r);
             }
         }
         return null;
@@ -1089,19 +1080,10 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 任一参数为 null 或 denominator=0 时返回 "-"
      */
     private String formatRatio(BigDecimal numerator, BigDecimal denominator) {
-        if (numerator == null || denominator == null) return "-";
-        if (denominator.compareTo(BigDecimal.ZERO) == 0) return "-";
-        BigDecimal ratio = numerator.divide(denominator, 4, RoundingMode.HALF_UP)
-                .multiply(new BigDecimal("100"));
-        return String.format("%.2f%%", ratio);
+        return formatRatioPercent(calcRatio(numerator, denominator));
     }
 
-    /**
-     * 构建利润表关键科目的 markdown 表格。
-     * <p>
-     * 包含 9 个基本科目（营业收入 ~ 净利润）+ 3 个计算比例行（毛利润率、净利润率、研发费用占比）。
-     * 增长率规则同资产负债表关键科目：取最后两个年末（12-31）列计算同比。
-// ========== Word 文档生成（模板模式） ==========
+    // ========== Word 文档生成（模板模式） ==========
 
     /**
      * 打开模板文档，替换 {{占位符}} 为实际数据，返回 Word 文档字节。
@@ -1135,7 +1117,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                 replacePlaceholderWithTable(doc, "{{balance_sheet_key_items}}",
                         table -> fillBalanceSheetTable(table, bsItemDateValues, bsDateColumns));
             } else {
-                replacePlaceholderText(doc, "{{balance_sheet_key_items}}", "");
+                clearPlaceholderText(doc, "{{balance_sheet_key_items}}");
             }
 
             // 4. 替换利润表关键科目占位符 -> 插入表格或清空
@@ -1143,7 +1125,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                 replacePlaceholderWithTable(doc, "{{profit_sheet_key_items}}",
                         table -> fillProfitSheetTable(table, psItemDateValues, psDateColumns));
             } else {
-                replacePlaceholderText(doc, "{{profit_sheet_key_items}}", "");
+                clearPlaceholderText(doc, "{{profit_sheet_key_items}}");
             }
 
             doc.write(baos);
@@ -1156,48 +1138,31 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /**
      * 替换文档段落中 {{{{field_name}}}} 格式的占位符为实际客户信息字段值。
-     * 使用 {@link XWPFParagraph#getText()} 拼接所有 run 后再替换，避免占位符被拆分到多个 run 中无法匹配。
+     * <p>
+     * 在段落级别拼接文本后替换占位符，然后复用第一个 run 写入替换结果，
+     * 删除多余 run，保留第一个 run 的字体样式。
      * <p>
      * 管户权规则：{{act_cntlr_nm}} 始终从 kjjr_ai_sxd_record.act_cntlr_nm 读取，不受管户权影响；
      * 其余从 kjjr_ai_sxd_profile 读取的占位符，has_ownership=1 时按正常值填充，
      * has_ownership=0 或未设置时统一替换为空字符串。
      */
     private void replaceProfilePlaceholders(XWPFDocument doc, CustomerProfile profile, String actCntlrNm, boolean hasOwnership) {
-        forEachParagraph(doc, para -> {
-            String paraText = para.getText();
-            if (paraText == null || !paraText.contains("{{")) return;
-
-            String replaced = paraText;
-            boolean changed = false;
-            for (Map.Entry<String, Function<CustomerProfile, String>> entry : PROFILE_FIELD_GETTERS.entrySet()) {
-                String placeholder = "{{" + entry.getKey() + "}}";
-                if (replaced.contains(placeholder)) {
-                    String value;
-                    if (!hasOwnership) {
-                        // 无管户权或未设置：所有 sxd_profile 字段占位符替换为空字符串
-                        value = "";
-                    } else {
-                        value = profile != null ? entry.getValue().apply(profile) : "";
-                        value = value != null ? value : "";
-                    }
-                    replaced = replaced.replace(placeholder, value);
-                    changed = true;
-                }
+        // 按 PROFILE_FIELD_GETTERS 的迭代顺序构建占位符 → 值映射，
+        // act_cntlr_nm 最后插入，保持与原替换顺序一致。
+        Map<String, String> values = new LinkedHashMap<>();
+        for (Map.Entry<String, Function<CustomerProfile, String>> entry : PROFILE_FIELD_GETTERS.entrySet()) {
+            String value;
+            if (!hasOwnership) {
+                value = "";
+            } else {
+                value = profile != null ? entry.getValue().apply(profile) : "";
+                value = value != null ? value : "";
             }
-            // 实控人姓名从 kjjr_ai_sxd_record 表读取，不受管户权影响
-            if (replaced.contains("{{act_cntlr_nm}}")) {
-                replaced = replaced.replace("{{act_cntlr_nm}}",
-                        actCntlrNm != null ? actCntlrNm : "");
-                changed = true;
-            }
-            if (changed) {
-                // 清除段落中所有 run，用替换后的完整文本创建新 run
-                for (int i = para.getRuns().size() - 1; i >= 0; i--) {
-                    para.removeRun(i);
-                }
-                para.createRun().setText(replaced, 0);
-            }
-        });
+            values.put(entry.getKey(), value);
+        }
+        // 实控人姓名从 kjjr_ai_sxd_record 表读取，不受管户权影响
+        values.put("act_cntlr_nm", actCntlrNm != null ? actCntlrNm : "");
+        replacePlaceholders(doc, values);
     }
 
     /**
@@ -1230,16 +1195,28 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /**
      * 替换文档段落中 {{dib_director_keyresume}} 等商业计划书提取数据占位符。
-     * 使用 {@link XWPFParagraph#getText()} 拼接所有 run 后再替换，避免占位符被拆分到多个 run 中无法匹配。
+     * <p>
+     * 在段落级别拼接文本后替换占位符，然后复用第一个 run 写入替换结果，
+     * 删除多余 run，保留第一个 run 的字体样式。
      */
     private void replaceExtractDataPlaceholders(XWPFDocument doc, Map<String, String> extractTextMap) {
+        replacePlaceholders(doc, extractTextMap);
+    }
+
+    /**
+     * 通用占位符替换：遍历文档所有段落（含表格单元格内段落），将 {{{{key}}}} 替换为 map 中的值。
+     * <p>
+     * 在段落级别拼接文本后替换占位符，去除 run 间的换行符，
+     * 复用第一个 run 写入替换结果并删除多余 run，保留第一个 run 的字体样式。
+     */
+    private void replacePlaceholders(XWPFDocument doc, Map<String, String> placeholderValues) {
         forEachParagraph(doc, para -> {
             String paraText = para.getText();
             if (paraText == null || !paraText.contains("{{")) return;
 
             String replaced = paraText;
             boolean changed = false;
-            for (Map.Entry<String, String> entry : extractTextMap.entrySet()) {
+            for (Map.Entry<String, String> entry : placeholderValues.entrySet()) {
                 String placeholder = "{{" + entry.getKey() + "}}";
                 if (replaced.contains(placeholder)) {
                     String value = entry.getValue();
@@ -1248,11 +1225,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                 }
             }
             if (changed) {
-                // 清除段落中所有 run，用替换后的完整文本创建新 run
-                for (int i = para.getRuns().size() - 1; i >= 0; i--) {
-                    para.removeRun(i);
-                }
-                para.createRun().setText(replaced, 0);
+                // getText() 在 run 之间追加了换行符，替换后需去除
+                replaced = replaced.replace("\n", "");
+                replaceParaTextPreserveStyle(para, replaced);
             }
         });
     }
@@ -1269,14 +1244,12 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             if (elem instanceof XWPFParagraph) {
                 XWPFParagraph para = (XWPFParagraph) elem;
                 if (para.getText().contains(placeholder)) {
-                    XmlCursor cursor = para.getCTP().newCursor();
-                    XWPFTable table = doc.insertNewTbl(cursor);
-                    cursor.dispose();
-
-                    tableFiller.accept(table);
-
-                    doc.removeBodyElement(i + 1);
-                    return;
+                    try (XmlCursor cursor = para.getCTP().newCursor()) {
+                        XWPFTable table = doc.insertNewTbl(cursor);
+                        tableFiller.accept(table);
+                        doc.removeBodyElement(i + 1);
+                        return;
+                    }
                 }
             }
         }
@@ -1284,14 +1257,14 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     }
 
     /**
-     * 将文档中指定占位符替换为给定的文本。
+     * 将文档中指定占位符替换为空字符串（用于无数据时清空占位符）。
      */
-    private void replacePlaceholderText(XWPFDocument doc, String placeholder, String replacement) {
+    private void clearPlaceholderText(XWPFDocument doc, String placeholder) {
         forEachParagraph(doc, para -> {
             for (XWPFRun run : para.getRuns()) {
                 String text = run.getText(0);
                 if (text != null && text.contains(placeholder)) {
-                    run.setText(text.replace(placeholder, replacement), 0);
+                    run.setText(text.replace(placeholder, ""), 0);
                     return;
                 }
             }
@@ -1305,7 +1278,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * @param doc      XWPFDocument 文档
      * @param consumer 对每个段落执行的操作
      */
-    private void forEachParagraph(XWPFDocument doc, java.util.function.Consumer<XWPFParagraph> consumer) {
+    private void forEachParagraph(XWPFDocument doc, Consumer<XWPFParagraph> consumer) {
         // 1. 遍历文档顶层段落
         for (XWPFParagraph para : doc.getParagraphs()) {
             consumer.accept(para);
@@ -1323,6 +1296,28 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     }
 
     /**
+     * 替换段落文本，同时保留字体样式。
+     * <p>
+     * 复用第一个 run 写入替换后的文本，删除多余 run，保留第一个 run 的字体样式。
+     * <p>
+     * 调用方需在段落级别（{@link XWPFParagraph#getText()}）拼接所有 run 的文本后替换占位符，
+     * 再传入本方法写回；若拼接文本中残留换行符，由调用方在传参前去除。
+     */
+    private void replaceParaTextPreserveStyle(XWPFParagraph para, String newText) {
+        if (para.getRuns().isEmpty()) {
+            para.createRun().setText(newText, 0);
+            return;
+        }
+        // 复用第一个 run，保留其字体样式
+        XWPFRun firstRun = para.getRuns().get(0);
+        // 删除多余的 run
+        for (int i = para.getRuns().size() - 1; i >= 1; i--) {
+            para.removeRun(i);
+        }
+        firstRun.setText(newText, 0);
+    }
+
+    /**
      * 向已创建的空白表格填充资产负债表关键科目数据。
      */
     private void fillBalanceSheetTable(XWPFTable table,
@@ -1333,7 +1328,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         int rowCount = 1 + BALANCE_SHEET_KEY_ITEMS.size() + 1;
 
         // 确保表格有足够的行：如果已有行（插入新表格时自带一行），先删掉
-        while (table.getRows().size() > 0) {
+        while (!table.getRows().isEmpty()) {
             table.removeRow(0);
         }
         for (int r = 0; r < rowCount; r++) {
@@ -1409,7 +1404,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         int rowCount = 1 + PROFIT_SHEET_KEY_ITEMS.size() + 3;
 
         // 确保表格有足够的行：如果已有行（插入新表格时自带一行），先删掉
-        while (table.getRows().size() > 0) {
+        while (!table.getRows().isEmpty()) {
             table.removeRow(0);
         }
         for (int r = 0; r < rowCount; r++) {
@@ -1466,28 +1461,8 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
         for (int c = 0; c < dateColumns.size(); c++) {
             String col = dateColumns.get(c);
-            String val;
-            if ("毛利润率".equals(label)) {
-                Map<String, BigDecimal> revVals = itemDateValues.get(ITEM_REVENUE);
-                Map<String, BigDecimal> costVals = itemDateValues.get(ITEM_COST);
-                BigDecimal rev = revVals != null ? revVals.get(col) : null;
-                BigDecimal cost = costVals != null ? costVals.get(col) : null;
-                val = (rev != null && cost != null && rev.compareTo(BigDecimal.ZERO) != 0)
-                        ? formatRatio(rev.subtract(cost), rev) : "-";
-            } else if ("净利润率".equals(label)) {
-                Map<String, BigDecimal> revVals = itemDateValues.get(ITEM_REVENUE);
-                Map<String, BigDecimal> profitVals = itemDateValues.get(ITEM_NET_PROFIT);
-                val = formatRatio(
-                        profitVals != null ? profitVals.get(col) : null,
-                        revVals != null ? revVals.get(col) : null);
-            } else {
-                Map<String, BigDecimal> revVals = itemDateValues.get(ITEM_REVENUE);
-                Map<String, BigDecimal> rdVals = itemDateValues.get(ITEM_RD_EXPENSE);
-                val = formatRatio(
-                        rdVals != null ? rdVals.get(col) : null,
-                        revVals != null ? revVals.get(col) : null);
-            }
-            setCellText(row.getCell(1 + c), val);
+            BigDecimal ratio = computeRatioForLabel(itemDateValues, col, label);
+            setCellText(row.getCell(1 + c), formatRatioPercent(ratio));
         }
 
         // 增长率
@@ -1551,12 +1526,16 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      */
     private void setCellText(XWPFTableCell cell, String text) {
         XWPFParagraph p = cell.getParagraphs().isEmpty() ? cell.addParagraph() : cell.getParagraphs().get(0);
-        // 清除段落中的已有 run，避免模板占位符残留
-        for (int i = p.getRuns().size() - 1; i >= 0; i--) {
-            p.removeRun(i);
+        if (p.getRuns().isEmpty()) {
+            p.createRun().setText(text != null ? text : "");
+        } else {
+            XWPFRun firstRun = p.getRuns().get(0);
+            // 删除多余的 run，保留第一个 run 的字体样式
+            for (int i = p.getRuns().size() - 1; i >= 1; i--) {
+                p.removeRun(i);
+            }
+            firstRun.setText(text != null ? text : "", 0);
         }
-        XWPFRun r = p.createRun();
-        r.setText(text != null ? text : "");
     }
 
     /**

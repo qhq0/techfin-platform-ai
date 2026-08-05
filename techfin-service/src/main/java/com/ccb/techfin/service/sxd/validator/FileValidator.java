@@ -10,6 +10,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 上传文件校验器：校验文件大小和扩展名/MIME 类型。
+ *
+ * @author qiuhaoquan
+ * @since 2026-07-23
+ */
 @Component
 @RequiredArgsConstructor
 public class FileValidator {
@@ -31,10 +37,7 @@ public class FileValidator {
 
     /**
      * 校验文件（合并所有业务类型的扩展名，适用于单一上传接口）。
-     *
- * @author qiuhaoquan
- * @since 2026-07-23
- */
+     */
     public void validate(List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
             return;
@@ -45,16 +48,6 @@ public class FileValidator {
         for (List<String> exts : uploadConfig.getAllowedExtensions().values()) {
             allowedExts.addAll(exts);
         }
-        doValidate(files, maxFileSize, allowedExts);
-    }
-
-    public void validate(List<MultipartFile> files, String businessType) {
-        if (files == null || files.isEmpty()) {
-            return;
-        }
-
-        long maxFileSize = uploadConfig.getMaxFileSize();
-        Set<String> allowedExts = new HashSet<>(uploadConfig.getAllowedExtensions().get(businessType));
         doValidate(files, maxFileSize, allowedExts);
     }
 

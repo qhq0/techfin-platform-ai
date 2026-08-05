@@ -21,7 +21,7 @@ public class RestExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<Void> handleMaxSize(MaxUploadSizeExceededException e) {
+    public Result<Void> handleMaxSize() {
         return Result.fail(-1, "文件大小超过限制");
     }
 

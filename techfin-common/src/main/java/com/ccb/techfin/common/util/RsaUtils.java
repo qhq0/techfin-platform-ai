@@ -46,7 +46,7 @@ public final class RsaUtils {
      * @return 解密后的明文字符串
      */
     public static String decrypt(String encryptedData) throws Exception {
-        checkInitialized("privateKey");
+        checkInitialized();
         Cipher cipher = Cipher.getInstance("RSA");
         cipher.init(Cipher.DECRYPT_MODE, privateKey);
         byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(encryptedData));
@@ -71,7 +71,7 @@ public final class RsaUtils {
 
     // ==================== 内部方法 ====================
 
-    private static void checkInitialized(String key) {
+    private static void checkInitialized() {
         if (privateKey == null) {
             throw new IllegalStateException("RsaUtils 未初始化，请先调用 init()");
         }
