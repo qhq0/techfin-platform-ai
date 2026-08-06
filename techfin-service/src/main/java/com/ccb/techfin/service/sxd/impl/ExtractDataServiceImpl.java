@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
 import org.apache.xmlbeans.XmlCursor;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTR;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTText;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -1214,7 +1216,8 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             String paraText = para.getText();
             if (paraText == null || !paraText.contains("{{")) return;
 
-            String replaced = paraText;
+            // 仅清理段落拼接文本（run 之间）可能残留的换行，替换值内部的换行需保留
+            String replaced = paraText.replace("\n", "");
             boolean changed = false;
             for (Map.Entry<String, String> entry : placeholderValues.entrySet()) {
                 String placeholder = "{{" + entry.getKey() + "}}";
@@ -1225,8 +1228,6 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                 }
             }
             if (changed) {
-                // getText() 在 run 之间追加了换行符，替换后需去除
-                replaced = replaced.replace("\n", "");
                 replaceParaTextPreserveStyle(para, replaced);
             }
         });
@@ -1299,14 +1300,15 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 替换段落文本，同时保留字体样式。
      * <p>
      * 复用第一个 run 写入替换后的文本，删除多余 run，保留第一个 run 的字体样式。
+     * 文本中的换行符（\n）转换为 Word 的软换行 {@code <w:br/>} 元素，
+     * 避免写入单个 {@code <w:t>} 文本节点后被 Word 折叠为空格。
      * <p>
      * 调用方需在段落级别（{@link XWPFParagraph#getText()}）拼接所有 run 的文本后替换占位符，
      * 再传入本方法写回；若拼接文本中残留换行符，由调用方在传参前去除。
      */
     private void replaceParaTextPreserveStyle(XWPFParagraph para, String newText) {
         if (para.getRuns().isEmpty()) {
-            para.createRun().setText(newText, 0);
-            return;
+            para.createRun();
         }
         // 复用第一个 run，保留其字体样式
         XWPFRun firstRun = para.getRuns().get(0);
@@ -1314,7 +1316,34 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         for (int i = para.getRuns().size() - 1; i >= 1; i--) {
             para.removeRun(i);
         }
-        firstRun.setText(newText, 0);
+        setRunTextWithBreaks(firstRun, newText);
+    }
+
+    /**
+     * 向 run 写入文本，将换行符（\n）转为软换行 {@code <w:br/>}。
+     * <p>
+     * 保留 run 已有的 rPr 字体样式；清空原文本节点后，按行交替写入
+     * {@code <w:t>} 与 {@code <w:br/>}，使 Word 正确渲染多行文本。
+     */
+    private void setRunTextWithBreaks(XWPFRun run, String text) {
+        String value = text != null ? text : "";
+        CTR ctr = run.getCTR();
+        // 清空现有文本节点与换行节点（rPr 位于 run 首位，不受影响）
+        for (int i = ctr.sizeOfTArray() - 1; i >= 0; i--) {
+            ctr.removeT(i);
+        }
+        while (ctr.sizeOfBrArray() > 0) {
+            ctr.removeBr(0);
+        }
+        // 按行交替写入文本和软换行
+        String[] lines = value.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) {
+                ctr.addNewBr();
+            }
+            CTText ct = ctr.addNewT();
+            ct.setStringValue(lines[i]);
+        }
     }
 
     /**
@@ -1522,19 +1551,19 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
     /**
      * 设置表格单元格文本。
-     * 复用段落中已有的 run 以保留模板预设格式，仅写入文本内容。
+     * 复用段落中已有的 run 以保留模板预设格式；换行符转为 {@code <w:br/>} 软换行。
      */
     private void setCellText(XWPFTableCell cell, String text) {
         XWPFParagraph p = cell.getParagraphs().isEmpty() ? cell.addParagraph() : cell.getParagraphs().get(0);
         if (p.getRuns().isEmpty()) {
-            p.createRun().setText(text != null ? text : "");
+            setRunTextWithBreaks(p.createRun(), text);
         } else {
             XWPFRun firstRun = p.getRuns().get(0);
             // 删除多余的 run，保留第一个 run 的字体样式
             for (int i = p.getRuns().size() - 1; i >= 1; i--) {
                 p.removeRun(i);
             }
-            firstRun.setText(text != null ? text : "", 0);
+            setRunTextWithBreaks(firstRun, text);
         }
     }
 

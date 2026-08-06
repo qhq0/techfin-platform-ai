@@ -14,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
@@ -24,11 +23,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 定时清理任务。
+ * 数据清理逻辑（不再由定时任务触发，可手工调用或接入外部调度）。
  * <ul>
- *   <li>每天凌晨 2:00 清理 sxd_att 中创建超过 24 小时的孤立记录</li>
- *   <li>每天凌晨 2:00 清理 sxd_doc 中关联状态为 UNFINISHED 的记录（含外部系统文件）</li>
- *   <li>每天凌晨 2:00 清理 sxd_extract_data 中关联状态为 UNFINISHED 的记录</li>
+ *   <li>清理 sxd_att 中创建超过 24 小时的孤立记录</li>
+ *   <li>清理 sxd_doc 中关联状态为 UNFINISHED 的记录（含外部系统文件）</li>
+ *   <li>清理 sxd_extract_data 中关联状态为 UNFINISHED 的记录</li>
  * </ul>
  *
  * @author qiuhaoquan
@@ -48,18 +47,6 @@ public class CleanupTask {
 
     @Value("${sxd.cleanup.orphan-attachment-retention-hours}")
     private int retentionHours;
-
-    /**
-     * 每天凌晨 2:00 执行清理。
-     */
-    @Scheduled(cron = "${sxd.cleanup.cron}")
-    public void cleanup() {
-        log.info("Scheduled cleanup task started");
-        cleanupOrphanAttachments();
-        cleanupUnfinishedDocEntries();
-        cleanupUnfinishedExtractData();
-        log.info("Scheduled cleanup task completed");
-    }
 
     /**
      * 清理 sxd_att 中创建时间超过 24 小时且未被引用的孤立附件记录。

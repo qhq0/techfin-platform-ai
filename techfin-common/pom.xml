@@ -26,5 +26,12 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+
+        <!-- Druid（仅测试用：数据库密码加密工具类 PwdCryptoToolTest 依赖 ConfigTools，不进入生产运行 classpath） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
