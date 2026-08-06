@@ -14,7 +14,7 @@
 
     <groupId>com.ccb</groupId>
     <artifactId>techfin-platform-ai</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.0.RELEASE</version>
     <packaging>pom</packaging>
     <name>techfin-platform-ai</name>
     <description>科技金融服务平台ai模块</description>

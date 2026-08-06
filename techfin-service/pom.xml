@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.ccb</groupId>
         <artifactId>techfin-platform-ai</artifactId>
-        <version>1.0.0</version>
+        <version>1.0.0.RELEASE</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
