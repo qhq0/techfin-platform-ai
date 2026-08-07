@@ -38,20 +38,17 @@ RUN set -eux && \
     groupadd -r -g ${GID} ${AP_GROUP} && \
     useradd -g ${AP_GROUP} --uid=${UID} -b ${BASE_DIR} ${AP_USER};
 
-# SA config
-#ENV LESSCHARSET=UTF-8
-#ENV SADDR=/home/ap/kjjr_ai/share
-#ENV LD_LIBRARY_PATH=${SADDR}/lib64:${LD_LIBRARY_PATH}
-#ENV PATH=${SADDR}/bin:${PATH}
-#ENV CLASSPATH=${SADDR}/lib64/secapi.jar:${CLASSPATH}
 
 # JDK17：公共仓库无 jdk17 镜像，用项目目录下的 tar 包解压叠加，覆盖基础镜像自带 JDK8
+# JDK 包体积超过 git 100MB 限制，已 split 分卷（.aa/.ab...），构建时 COPY 分卷 → cat 拼接还原 → tar 解压
 ARG JDK_TARBALL=jdk-17.0.20-linux-x64.tar.gz
-COPY ${JDK_TARBALL} /tmp/${JDK_TARBALL}
+# 拷贝分卷到用户目录 AP_HOME（不使用 /tmp），分卷数以实际为准，用通配符 COPY 全部碎片
+COPY ${JDK_TARBALL}.* ${AP_HOME}/
 RUN set -eux && \
     mkdir -p /usr/local/jdk && \
-    tar -xzf /tmp/${JDK_TARBALL} -C /usr/local/jdk && \
-    rm -f /tmp/${JDK_TARBALL}
+    cat ${AP_HOME}/${JDK_TARBALL}.* > ${AP_HOME}/${JDK_TARBALL} && \
+    tar -xzf ${AP_HOME}/${JDK_TARBALL} -C /usr/local/jdk && \
+    rm -f ${AP_HOME}/${JDK_TARBALL}.*
 
 # 用 JDK17 覆盖：JAVA_HOME 指向 JDK17，PATH 前插 JDK17 的 bin（覆盖基础镜像 JDK8）
 ENV JAVA_HOME=/usr/local/jdk/jdk-17.0.20+8 \
