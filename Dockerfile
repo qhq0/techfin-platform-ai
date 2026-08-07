@@ -58,7 +58,7 @@ ENV JAVA_HOME=/usr/local/jdk/jdk-17.0.20+8 \
     PATH=/usr/local/jdk/jdk-17.0.20+8/bin:${PATH}
 
 # Create logs...
-RUN mkdir -p ${AP_HOME}/p8blog && \
+RUN mkdir -p ${AP_HOME}/p8log && \
     chown -R ${AP_USER}:${AP_GROUP} ${AP_HOME}
 
 # copy package
