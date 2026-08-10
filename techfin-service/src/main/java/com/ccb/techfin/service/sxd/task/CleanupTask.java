@@ -126,6 +126,7 @@ public class CleanupTask {
         headers.setContentType(MediaType.APPLICATION_JSON);
         String token = apiProperties.getDefaultToken();
         if (StringUtils.hasText(token)) {
+            UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
             headers.set("c1-token", token);
         }
         HttpEntity<Void> requestEntity = new HttpEntity<>(headers);

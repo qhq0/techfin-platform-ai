@@ -192,6 +192,7 @@ public class SxdServiceImpl implements SxdService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
             if (StringUtils.hasText(token)) {
+                UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
                 headers.set("c1-token", token);
             }
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
@@ -302,6 +303,7 @@ public class SxdServiceImpl implements SxdService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             if (StringUtils.hasText(token)) {
+                UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
                 headers.set("c1-token", token);
             }
             HttpEntity<List<DocBatchAddItem>> requestEntity = new HttpEntity<>(items, headers);
@@ -401,6 +403,7 @@ public class SxdServiceImpl implements SxdService {
         try {
             HttpHeaders headers = new HttpHeaders();
             if (StringUtils.hasText(token)) {
+                UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
                 headers.set("c1-token", token);
             }
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
