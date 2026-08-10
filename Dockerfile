@@ -58,8 +58,8 @@ ENV JAVA_HOME=/usr/local/jdk/jdk-17.0.20+8 \
 RUN mkdir -p ${AP_HOME}/p8log && \
     chown -R ${AP_USER}:${AP_GROUP} ${AP_HOME}
 
-# copy package
-COPY $APP_PKG $AP_HOME/
+# copy package（源路径相对于构建上下文根目录，jar 在 Maven 的 target 目录下）
+COPY techfin-controller/target/${APP_PKG} $AP_HOME/
 RUN chown ${AP_USER}:${AP_GROUP} ${AP_HOME}/${APP_PKG}
 
 # Copy start sh

@@ -54,6 +54,11 @@ public class FileValidator {
     private void doValidate(List<MultipartFile> files, long maxFileSize, Set<String> allowedExts) {
 
         for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                throw new FileValidationException(null, "FILE_EMPTY",
+                        "上传文件不能为空");
+            }
+
             String originalName = file.getOriginalFilename();
             long fileSize = file.getSize();
 
@@ -61,6 +66,11 @@ public class FileValidator {
                 throw new FileValidationException(originalName, "FILE_TOO_LARGE",
                         "超过大小限制（最大 " + maxFileSize / (1024 * 1024) + "MB），当前大小 "
                                 + fileSize / (1024 * 1024) + "MB");
+            }
+
+            if (containsControlChar(originalName)) {
+                throw new FileValidationException(originalName, "INVALID_FILE_NAME",
+                        "文件名不能包含换行等控制字符");
             }
 
             String extension = getExtension(originalName);
@@ -77,6 +87,20 @@ public class FileValidator {
                 }
             }
         }
+    }
+
+    /**
+     * 检查文件名是否含 CR/LF/NUL 控制字符。
+     * 此类文件名会被序列化进 multipart 的 Content-Disposition 头，可造成
+     * HTTP 请求头部注入/拆分，必须在边界拒绝。
+     */
+    private boolean containsControlChar(String fileName) {
+        if (fileName == null) {
+            return false;
+        }
+        return fileName.indexOf('\r') >= 0
+                || fileName.indexOf('\n') >= 0
+                || fileName.indexOf((char) 0) >= 0;
     }
 
     private String getExtension(String fileName) {

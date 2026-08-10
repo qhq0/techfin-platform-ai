@@ -1,6 +1,7 @@
 package com.ccb.techfin.service.sxd.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ccb.techfin.common.util.UrlSecurityUtils;
 import com.ccb.techfin.dao.sxd.AttachmentMapper;
 import com.ccb.techfin.dao.sxd.DocEntryMapper;
 import com.ccb.techfin.dao.sxd.ExtractDataMapper;
@@ -120,6 +121,7 @@ public class CleanupTask {
      */
     private void deleteExternalDoc(String docId) {
         String url = apiProperties.getDocDeleteUrl() + "/" + docId;
+        UrlSecurityUtils.assertNoCrlf(url);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         String token = apiProperties.getDefaultToken();

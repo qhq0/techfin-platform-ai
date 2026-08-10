@@ -2,6 +2,7 @@ package com.ccb.techfin.service.sxd.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ccb.techfin.common.exception.BusinessException;
+import com.ccb.techfin.common.util.UrlSecurityUtils;
 import com.ccb.techfin.dao.sxd.DocEntryMapper;
 import com.ccb.techfin.dao.sxd.ExtractDataMapper;
 import com.ccb.techfin.dao.sxd.SxdMapper;
@@ -410,6 +411,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      */
     private byte[] downloadExportFile(String docId) {
         String url = apiProperties.getDocExportDataUrl() + "/" + docId;
+        UrlSecurityUtils.assertNoCrlf(url);
         try {
             HttpHeaders headers = new HttpHeaders();
             if (StringUtils.hasText(apiProperties.getDefaultToken())) {
@@ -464,6 +466,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 异常交由调用方处理（各调用方的失败/异常语义不同）。
      */
     private ExternalResponse postQueryData(Long docId, String tableName, String token) {
+        // tableName 会进外部 queryData 请求体，防 CRLF 注入（响应截断），兜底校验
+        UrlSecurityUtils.assertNoCrlf(tableName,
+                "INVALID_TABLE_NAME", "表名含非法控制字符");
         BpExtractRequest request = new BpExtractRequest(docId, tableName);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -697,6 +702,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      */
     private List<DocTableStateRecord> queryDocTableStates(Long docId, String token) {
         String url = apiProperties.getDocTableExtractStateUrl() + "/" + docId;
+        UrlSecurityUtils.assertNoCrlf(url);
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -843,6 +849,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      */
     private void deleteExternalDoc(String docId, String token) {
         String url = apiProperties.getDocDeleteUrl() + "/" + docId;
+        UrlSecurityUtils.assertNoCrlf(url);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (StringUtils.hasText(token)) {

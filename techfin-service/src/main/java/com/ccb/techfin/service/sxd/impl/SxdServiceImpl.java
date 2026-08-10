@@ -2,6 +2,7 @@ package com.ccb.techfin.service.sxd.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ccb.techfin.common.exception.BusinessException;
+import com.ccb.techfin.common.util.UrlSecurityUtils;
 import com.ccb.techfin.dao.sxd.AttachmentMapper;
 import com.ccb.techfin.dao.sxd.DocEntryMapper;
 import com.ccb.techfin.dao.sxd.SxdMapper;
@@ -80,10 +81,12 @@ public class SxdServiceImpl implements SxdService {
         List<SubmitFileMeta> allItems = new ArrayList<>();
         if (request.getFinanceFiles() != null) {
             for (SubmitMaterialsRequest.SubmitFileItem f : request.getFinanceFiles()) {
+                validateSubmitFileItem(f);
                 allItems.add(new SubmitFileMeta(f.getAttId(), "finance", f.getReportDate()));
             }
         }
         if (request.getBusinessFile() != null) {
+            validateAttId(request.getBusinessFile());
             allItems.add(new SubmitFileMeta(request.getBusinessFile(), "business", null));
         }
         if (allItems.isEmpty()) {
@@ -116,6 +119,7 @@ public class SxdServiceImpl implements SxdService {
             Map<String, SubmitFileMeta> itemIndex = allItems.stream()
                     .collect(Collectors.toMap(i -> i.attId, i -> i, (a, b) -> a));
             for (DocInfo doc : batchData.getDocList()) {
+                assertValidDocId(doc.getId());
                 SubmitFileMeta matched = itemIndex.get(doc.getAttId());
                 DocEntry entry = new DocEntry(
                         doc.getId(),
@@ -159,6 +163,30 @@ public class SxdServiceImpl implements SxdService {
         }
     }
 
+    /**
+     * 校验提交文件项：attId 非空且不含控制字符，reportDate 不含控制字符。
+     * 这些字段会被拼入外部批量新增请求，含 CR/LF 可造成 HTTP 请求注入/响应截断。
+     */
+    private void validateSubmitFileItem(SubmitMaterialsRequest.SubmitFileItem item) {
+        if (item == null) {
+            throw new BusinessException("PARAM_MISSING", "文件项不能为空");
+        }
+        validateAttId(item.getAttId());
+        UrlSecurityUtils.assertNoCrlf(item.getReportDate(),
+                "INVALID_REPORT_DATE", "报告日期含非法控制字符");
+    }
+
+    /**
+     * 校验附件 ID：非空且不含控制字符。
+     */
+    private void validateAttId(String attId) {
+        if (!StringUtils.hasText(attId)) {
+            throw new BusinessException("PARAM_MISSING", "附件 ID 不能为空");
+        }
+        UrlSecurityUtils.assertNoCrlf(attId,
+                "INVALID_ATT_ID", "附件 ID 含非法控制字符");
+    }
+
     private String uploadAttachment(MultipartFile file, String token) {
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -170,7 +198,7 @@ public class SxdServiceImpl implements SxdService {
             ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
-                    return file.getOriginalFilename();
+                    return sanitizeFileName(file.getOriginalFilename());
                 }
             };
             body.add("file", fileResource);
@@ -194,6 +222,21 @@ public class SxdServiceImpl implements SxdService {
             log.error("Attachment upload failed for file: {}", file.getOriginalFilename(), e);
             throw new BusinessException("ATTACH_UPLOAD_FAILED", e.getMessage());
         }
+    }
+
+    /**
+     * 净化文件名中的 CR/LF/NUL 控制字符。
+     * <p>
+     * 原始文件名会被 Spring 序列化进 multipart 请求的
+     * Content-Disposition: form-data; name="file"; filename="&lt;name&gt;" 头，
+     * 若含 CR/LF 可突破引号注入/截断外部请求头部（HTTP 请求拆分），故必须清除。
+     * </p>
+     */
+    private static String sanitizeFileName(String fileName) {
+        if (fileName == null) {
+            return null;
+        }
+        return fileName.replaceAll("[\\r\\n\\u0000]", "");
     }
 
     /**
@@ -354,6 +397,7 @@ public class SxdServiceImpl implements SxdService {
     }
 
     private DocDetailData getDocDetail(String url, String token) {
+        UrlSecurityUtils.assertNoCrlf(url);
         try {
             HttpHeaders headers = new HttpHeaders();
             if (StringUtils.hasText(token)) {
@@ -375,6 +419,18 @@ public class SxdServiceImpl implements SxdService {
         } catch (Exception e) {
             log.error("Failed to query doc detail for url: {}", url, e);
             throw new BusinessException("DOC_DETAIL_FAILED", "资料详情查询异常：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 校验 docId 仅由数字组成。
+     * docId 来自外部 API 且会被拼入对外请求 URL，若含 CR/LF 等控制字符
+     * （含百分号编码 %0d/%0a）会造成 HTTP 响应截断/拆分（CRLF 注入），故入库前必须拦截。
+     */
+    private void assertValidDocId(String docId) {
+        if (!StringUtils.hasText(docId) || !docId.matches("^[0-9]+$")) {
+            throw new BusinessException("INVALID_DOC_ID",
+                    "文档 ID 非法：" + (docId == null ? "null" : docId));
         }
     }
 

@@ -44,6 +44,10 @@ public class SxdController {
     public Result<String> uploadAttachment(
             @RequestParam("file") MultipartFile file) {
 
+        // 输入验证：拒绝空文件/缺失文件，避免空指针及无效文件进入外部存储
+        if (file == null || file.isEmpty()) {
+            return Result.fail(-1, "上传文件不能为空");
+        }
         String attId = sxdService.uploadFile(file);
         return Result.success("附件上传成功", attId);
     }
