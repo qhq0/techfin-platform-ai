@@ -48,4 +48,39 @@ public final class UrlSecurityUtils {
             throw new BusinessException(code, message);
         }
     }
+
+    /**
+     * HTTP 头值安全字符集：字母数字及 URL-safe / base64 常用符号
+     * （JWT、UUID、base64 等不透明 token 均在此范围内）。
+     */
+    private static final String SAFE_HEADER_CHARS = "A-Za-z0-9\\-_.~+/=";
+
+    /**
+     * 白名单净化：移除值中所有非安全字符（含 CR/LF/NUL 等控制字符）。
+     * 返回值是净化后的值，须在写入 HTTP 头时使用净化后的结果。
+     * 对合法 token（字母数字/base64/JWT/UUID）为无副作用操作。
+     *
+     * @param value 原始值（可能为 null）
+     * @return 仅含安全字符的值；null 原样返回
+     */
+    public static String sanitizeHeaderValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceAll("[^" + SAFE_HEADER_CHARS + "]", "");
+    }
+
+    /**
+     * 白名单校验：值是否完全由安全字符组成（等价于净化后无任何丢失）。
+     * 用于配置加载等场景，可对不含法的配置快速失败。
+     *
+     * @param value 待校验的值（null 视为合法）
+     * @return true 表示仅含安全字符
+     */
+    public static boolean isSafeHeaderValue(String value) {
+        if (value == null) {
+            return true;
+        }
+        return value.equals(sanitizeHeaderValue(value));
+    }
 }

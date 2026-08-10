@@ -1,5 +1,6 @@
 package com.ccb.techfin.service.sxd.config;
 
+import com.ccb.techfin.common.exception.BusinessException;
 import com.ccb.techfin.common.util.UrlSecurityUtils;
 import jakarta.annotation.PostConstruct;
 import lombok.Data;
@@ -32,7 +33,9 @@ public class ApiProperties {
      */
     @PostConstruct
     public void validateConfig() {
-        UrlSecurityUtils.assertNoCrlf(defaultToken, "INVALID_TOKEN",
-                "配置 api.default-token 含非法控制字符，请检查配置");
+        if (!UrlSecurityUtils.isSafeHeaderValue(defaultToken)) {
+            throw new BusinessException("INVALID_TOKEN",
+                    "配置 api.default-token 含非法字符，仅允许字母数字及 - _ . ~ + / =");
+        }
     }
 }

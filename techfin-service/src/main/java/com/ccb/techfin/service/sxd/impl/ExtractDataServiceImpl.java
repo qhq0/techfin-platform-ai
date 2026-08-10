@@ -415,9 +415,8 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         try {
             HttpHeaders headers = new HttpHeaders();
             if (StringUtils.hasText(apiProperties.getDefaultToken())) {
-                UrlSecurityUtils.assertNoCrlf(apiProperties.getDefaultToken(),
-                        "INVALID_TOKEN", "token 含非法控制字符");
-                headers.set("c1-token", apiProperties.getDefaultToken());
+                headers.set("c1-token",
+                        UrlSecurityUtils.sanitizeHeaderValue(apiProperties.getDefaultToken()));
             }
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
             ResponseEntity<byte[]> response = restTemplate.exchange(
@@ -475,8 +474,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (StringUtils.hasText(token)) {
-            UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
-            headers.set("c1-token", token);
+            headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
         }
         HttpEntity<BpExtractRequest> requestEntity = new HttpEntity<>(request, headers);
         ResponseEntity<ExternalResponse> response = restTemplate.exchange(
@@ -710,8 +708,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             if (StringUtils.hasText(token)) {
-                UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
-                headers.set("c1-token", token);
+                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
             }
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
             ResponseEntity<ExternalResponse> response = restTemplate.exchange(
@@ -857,8 +854,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (StringUtils.hasText(token)) {
-            UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
-            headers.set("c1-token", token);
+            headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
         }
         HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
         restTemplate.exchange(url, HttpMethod.POST, requestEntity, ExternalResponse.class);

@@ -192,8 +192,7 @@ public class SxdServiceImpl implements SxdService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
             if (StringUtils.hasText(token)) {
-                UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
-                headers.set("c1-token", token);
+                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
             }
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
@@ -303,8 +302,7 @@ public class SxdServiceImpl implements SxdService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             if (StringUtils.hasText(token)) {
-                UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
-                headers.set("c1-token", token);
+                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
             }
             HttpEntity<List<DocBatchAddItem>> requestEntity = new HttpEntity<>(items, headers);
             ResponseEntity<ExternalResponse> response = restTemplate.exchange(
@@ -403,8 +401,7 @@ public class SxdServiceImpl implements SxdService {
         try {
             HttpHeaders headers = new HttpHeaders();
             if (StringUtils.hasText(token)) {
-                UrlSecurityUtils.assertNoCrlf(token, "INVALID_TOKEN", "token 含非法控制字符");
-                headers.set("c1-token", token);
+                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
             }
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
             ResponseEntity<ExternalResponse> response = restTemplate.exchange(
