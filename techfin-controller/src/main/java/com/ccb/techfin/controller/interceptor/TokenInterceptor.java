@@ -1,4 +1,4 @@
-package com.ccb.techfin.controller.sxd.interceptor;
+package com.ccb.techfin.controller.interceptor;
 
 import com.ccb.techfin.common.util.RsaUtils;
 import com.fasterxml.jackson.databind.JsonNode;

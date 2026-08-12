@@ -1,6 +1,6 @@
-package com.ccb.techfin.controller.sxd.config;
+package com.ccb.techfin.controller.config;
 
-import com.ccb.techfin.controller.sxd.interceptor.TokenInterceptor;
+import com.ccb.techfin.controller.interceptor.TokenInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;

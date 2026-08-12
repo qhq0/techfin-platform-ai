@@ -1,4 +1,4 @@
-package com.ccb.techfin.service.sxd.config;
+package com.ccb.techfin.service.config;
 
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 /**
  * MyBatis-Plus 自动填充处理器。
  * insert 时自动填充 createdAt / updatedAt，update 时自动填充 updatedAt。
+ * 
  *
  * @author qiuhaoquan
  * @since 2026-07-23
