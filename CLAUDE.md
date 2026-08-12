@@ -160,9 +160,10 @@ Controller base: `/sxd`
 **判断流程（`CustomerServiceImpl.getCustOwnership()`）：**
 
 1. token 解密后的 `userAccount` → `msp_user.account` 查找用户 → 得到 `staff_code`、`role_id`（一个或多个，逗号分隔）、`dept_id`（仅一个）
+   → 用 `role_id` 去 `msp_role` 表查询得到 `role_name` 集合（`role_id` 可能随环境变化，唯一不变的是角色名称，判断以 `role_name` 为准）
 2. `dept_id` → `msp_dept.institution_no`
-3. `role_id` 含**分行经办人员(94)** **且** `institution_no` 为 `443536363`（科技金融创新中心） → ✅ 有管户权；否则进入下一步
-4. `kjjr_ai_sxd_profile.cst_mngacc_inst_supr_insid` 匹配 `institution_no`（一致）**且** `role_id` 含**支行科室负责人(92)** → ✅
+3. `role_name` 含**分行经办人员** **且** `institution_no` 为 `443536363`（科技金融创新中心） → ✅ 有管户权；否则进入下一步
+4. `kjjr_ai_sxd_profile.cst_mngacc_inst_supr_insid` 匹配 `institution_no`（一致）**且** `role_name` 含**支行科室负责人** → ✅
 5. 若上一步机构编号不一致、或一致但非支行科室负责人 → 进入下一步
 6. `kjjr_ai_sxd_profile.cst_mngacc_cstmgr_id` 匹配 `msp_user.staff_code`（员工编号） → ✅
 7. 其余情况 → ❌ 无管户权
@@ -172,8 +173,9 @@ Controller base: `/sxd`
 相关代码：
 - `SxdController.getCustOwnership()` — 接口入口，从 request attribute 取 userAccount
 - `CustomerService.getCustOwnership()` — Service 接口
-- `CustomerServiceImpl.getCustOwnership()` — 实现类，注入 `MspUserMapper`、`MspDeptMapper`、`CustomerProfileMapper`
-- `RoleEnum` — 角色枚举，提供角色 ID 常量
+- `CustomerServiceImpl.getCustOwnership()` — 实现类，注入 `MspUserMapper`、`MspDeptMapper`、`MspRoleMapper`、`CustomerProfileMapper`
+- `MspRoleMapper` — 用 `role_id` 查 `msp_role`（`is_deleted = 0`）得 `role_name` 集合
+- `RoleEnum` — 角色枚举，提供角色名称常量（按 `role_name` 匹配，不含 `role_id`）
 
 #### 9.2 实控人查询的管户权检查
 

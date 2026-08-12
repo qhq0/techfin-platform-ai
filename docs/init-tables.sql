@@ -69,26 +69,3 @@ CREATE TABLE IF NOT EXISTS kjjr_ai_sxd_extract_data (
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提取数据缓存表';
 
-
--- ------------------------------------------------------------
--- 5. sxd_institution — 机构信息表
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS sxd_institution (
-    id               INT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    tenant_code      VARCHAR(12)  DEFAULT NULL             COMMENT '租户编码',
-    institution_no   INT          DEFAULT NULL             COMMENT '机构编号',
-    parent_id        INT          DEFAULT NULL             COMMENT '父级机构ID',
-    dept_name        VARCHAR(45)  DEFAULT NULL             COMMENT '机构名称',
-    full_name        VARCHAR(45)  DEFAULT NULL             COMMENT '机构全称',
-    sort             INT          DEFAULT NULL             COMMENT '排序号',
-    remark           VARCHAR(255) DEFAULT NULL             COMMENT '备注',
-    is_deleted       INT          DEFAULT NULL             COMMENT '是否删除（0-正常，1-删除）',
-    service_type     VARCHAR(20)  DEFAULT NULL             COMMENT '服务类型',
-    institution_type VARCHAR(30)  DEFAULT NULL             COMMENT '机构类型',
-    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_parent_id (parent_id),
-    KEY idx_tenant_code (tenant_code),
-    KEY idx_institution_no (institution_no)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构信息表';

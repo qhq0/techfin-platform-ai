@@ -1,12 +1,15 @@
 package com.ccb.techfin.service.sxd.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ccb.techfin.common.enums.RoleEnum;
 import com.ccb.techfin.common.exception.BusinessException;
 import com.ccb.techfin.dao.sxd.CustomerProfileMapper;
 import com.ccb.techfin.dao.sxd.MspDeptMapper;
+import com.ccb.techfin.dao.sxd.MspRoleMapper;
 import com.ccb.techfin.dao.sxd.MspUserMapper;
 import com.ccb.techfin.dao.sxd.SxdMapper;
 import com.ccb.techfin.model.entity.MspDept;
+import com.ccb.techfin.model.entity.MspRole;
 import com.ccb.techfin.model.entity.MspUser;
 import com.ccb.techfin.model.sxd.entity.SxdRecord;
 import com.ccb.techfin.model.sxd.entity.CustomerProfile;
@@ -37,6 +40,7 @@ public class CustomerServiceImpl implements CustomerService {
     private final SxdMapper sxdMapper;
     private final MspUserMapper mspUserMapper;
     private final MspDeptMapper mspDeptMapper;
+    private final MspRoleMapper mspRoleMapper;
 
     @Override
     public String getControllerName(String taskId, String cstId) {
@@ -145,12 +149,12 @@ public class CustomerServiceImpl implements CustomerService {
         }
 
         String staffCode = user.getStaffCode();
-        // role_id 可能为多个，用逗号分隔
+        // 角色名称：用 role_id 去 msp_role 表查询（role_id 可能随环境变化，以 role_name 为准）
         Set<Integer> roleIds = parseCommaSeparated(user.getRoleId());
+        Set<String> roleNames = queryRoleNames(roleIds);
+        log.debug("User roles: userAccount={}, staffCode={}, roleIds={}, roleNames={}", userAccount, staffCode, roleIds, roleNames);
         // dept_id 只有一个数
         Integer deptId = safeParseInt(user.getDeptId());
-
-        log.debug("User found: userAccount={}, staffCode={}, roleIds={}, deptId={}", userAccount, staffCode, roleIds, deptId);
 
         // ==================== 2. 通过 dept_id 查找 institution_no ====================
         String institutionNo = null;
@@ -163,10 +167,10 @@ public class CustomerServiceImpl implements CustomerService {
         log.debug("Institution number from department: {}", institutionNo);
 
         // ==================== 3. 分行经办人员 + 科技金融创新中心(443536363) ====================
-        if (roleIds.contains(RoleEnum.BRANCH_OFFICE_HANDLER.getRoleId())
+        if (roleNames.contains(RoleEnum.BRANCH_OFFICE_HANDLER.getRoleName())
                 && "443536363".equals(institutionNo)) {
             log.info("Cust ownership granted: userAccount={}, staffCode={}, role=分行经办人员({}), institutionNo=443536363",
-                    userAccount, staffCode, RoleEnum.BRANCH_OFFICE_HANDLER.getRoleId());
+                    userAccount, staffCode, RoleEnum.BRANCH_OFFICE_HANDLER.getRoleName());
             updateOwnership(taskId, "1");
             return true;
         }
@@ -188,9 +192,9 @@ public class CustomerServiceImpl implements CustomerService {
         // ==================== 5. 管户支行编号匹配 + 支行科室负责人 ====================
         // 用 cst_mngacc_inst_supr_insid 匹配 institution_no，一致且 role_id 含支行科室负责人 → true
         boolean instMatched = custInstNo != null && custInstNo.equals(institutionNo);
-        if (instMatched && roleIds.contains(RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleId())) {
+        if (instMatched && roleNames.contains(RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleName())) {
             log.info("Cust ownership granted: userAccount={}, staffCode={}, role=支行科室负责人({}), instMatched=true",
-                    userAccount, staffCode, RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleId());
+                    userAccount, staffCode, RoleEnum.SUB_BRANCH_DEPT_HEAD.getRoleName());
             updateOwnership(taskId, "1");
             return true;
         }
@@ -207,6 +211,25 @@ public class CustomerServiceImpl implements CustomerService {
         log.info("Cust ownership denied: userAccount={}, staffCode={}, cstId={}", userAccount, staffCode, cstId);
         updateOwnership(taskId, "0");
         return false;
+    }
+
+    /**
+     * 根据角色 id 集合查询 msp_role 表，得到角色名称集合。
+     * 数据库主键 id 可能随环境变化，以 role_name 为准。
+     */
+    private Set<String> queryRoleNames(Set<Integer> roleIds) {
+        if (roleIds == null || roleIds.isEmpty()) {
+            return Set.of();
+        }
+        return mspRoleMapper.selectList(
+                        new LambdaQueryWrapper<MspRole>()
+                                .in(MspRole::getId, roleIds)
+                                .eq(MspRole::getIsDeleted, 0)
+                                .select(MspRole::getRoleName))
+                .stream()
+                .map(MspRole::getRoleName)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
     }
 
     /**
