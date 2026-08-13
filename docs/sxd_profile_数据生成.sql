@@ -4,7 +4,7 @@
 -- 功能：随机生成测试数据，不依赖源表
 -- 说明：
 --   - cst_id：442 开头的 18 位数字编号
---   - fd_dt：格式与 dep_bal_dt 一致（如 15Mar2015）
+--   - fd_dt：格式与 dep_bal_dt 一致（如 2015-03-15）
 --   - 金额字段：纯数字带两位小数（如 38000.00）
 --   - cst_mngacc_cstmgr_id：8 位数字员工编号
 --   - cst_mngacc_inst_supr_insid：9 位数字机构编号（如 443536363）
@@ -62,19 +62,19 @@ BEGIN
             '惠州电子信息有限公司', '珠海现代物流有限公司', '深圳南山区文化创意有限公司',
             '广州黄埔区集成电路有限公司', '深圳宝安区精密仪器有限公司');
 
-        -- 日期格式：日+月英文缩写+年（如 15Mar2015），fd_dt 与 dep_bal_dt 格式一致
+        -- 日期格式：yyyy-mm-dd（如 2015-03-15），fd_dt 与 dep_bal_dt 格式一致
         SET v_fd_dt = CONCAT(
-            1 + FLOOR(RAND() * 28),
-            ELT(1 + FLOOR(RAND() * 12), 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'),
-            1990 + FLOOR(RAND() * 30));
+            1990 + FLOOR(RAND() * 30), '-',
+            LPAD(1 + FLOOR(RAND() * 12), 2, '0'), '-',
+            LPAD(1 + FLOOR(RAND() * 28), 2, '0'));
         SET v_dep_bal_dt = CONCAT(
-            1 + FLOOR(RAND() * 28),
-            ELT(1 + FLOOR(RAND() * 12), 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'),
-            2020 + FLOOR(RAND() * 6));
+            2020 + FLOOR(RAND() * 6), '-',
+            LPAD(1 + FLOOR(RAND() * 12), 2, '0'), '-',
+            LPAD(1 + FLOOR(RAND() * 28), 2, '0'));
         SET v_acc_start_dt = CONCAT(
-            1 + FLOOR(RAND() * 28),
-            ELT(1 + FLOOR(RAND() * 12), 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'),
-            2020 + FLOOR(RAND() * 6));
+            2020 + FLOOR(RAND() * 6), '-',
+            LPAD(1 + FLOOR(RAND() * 12), 2, '0'), '-',
+            LPAD(1 + FLOOR(RAND() * 28), 2, '0'));
 
         -- 统一社会信用代码：18 位
         -- 结构：登记管理部门(1位) + 机构类别(1位) + 行政区划码(6位) + 组织机构代码(9位) + 校验码(1位)
