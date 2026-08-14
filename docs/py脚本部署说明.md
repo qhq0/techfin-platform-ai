@@ -66,7 +66,7 @@ nohup python3 ${AP_HOME}/insert_sxd_profile.py \
 exec java -jar ${AP_HOME}/app.jar
 ```
 
-> `--dir /push` 指向推送卷目录；`--schedule` 启动即跑一次，之后每天 02:00 执行。
+> `--dir /push` 指向推送卷目录；`--schedule` 启动即跑一次，之后每天 06:00 执行。
 
 ### 2.3 docker run：挂卷 + 环境变量
 
@@ -115,7 +115,7 @@ python3 insert_sxd_profile.py --dir /push
 
 ## 5. `--schedule` 定时说明
 
-- **启动即执行一次**（容器重启后数据立刻刷新），之后**每天 `--hour:--minute`（默认 02:00）执行一次**
+- **启动即执行一次**（容器重启后数据立刻刷新），之后**每天 `--hour:--minute`（默认 06:00）执行一次**
 - 循环常驻，进程随容器存活；单次失败只记日志、不退出，下轮继续
 - 时间用 `--hour` / `--minute` 调整，例如每天 3 点半：`--schedule --hour 3 --minute 30`
 - 每次循环**重新扫描** `/push`，新到的每日文件自动被取用

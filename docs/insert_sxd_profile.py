@@ -217,8 +217,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="只打印 SQL，不执行")
     ap.add_argument("--schedule", action="store_true",
                     help="自循环定时模式：启动执行一次，之后每天 --hour:--minute 执行，常驻")
-    ap.add_argument("--hour", type=int, choices=range(24), default=2,
-                    help="定时执行小时（默认 2）")
+    ap.add_argument("--hour", type=int, choices=range(24), default=6,
+                    help="定时执行小时（默认 6，即每天凌晨 6 点）")
     ap.add_argument("--minute", type=int, choices=range(60), default=0,
                     help="定时执行分钟（默认 0）")
     args = ap.parse_args()
