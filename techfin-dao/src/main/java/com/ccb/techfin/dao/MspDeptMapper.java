@@ -1,4 +1,4 @@
-package com.ccb.techfin.dao.sxd;
+package com.ccb.techfin.dao;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.ccb.techfin.model.entity.MspDept;

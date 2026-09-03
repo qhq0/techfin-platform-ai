@@ -294,7 +294,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         }
 
         // 缓存未命中或不完整，调外部 API 并写入缓存
-        String token = apiProperties.getDefaultToken();
+        String apiKey = apiProperties.getC1ApiKey();
 
         for (DocEntry entry : docEntries) {
             Long docId;
@@ -307,7 +307,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             }
 
             for (String tableName : BUSINESS_PLAN_TABLES) {
-                List<String> texts = queryBusinessExtractDataByTable(docId, tableName, token);
+                List<String> texts = queryBusinessExtractDataByTable(docId, tableName, apiKey);
                 String mergedText = String.join("\n", texts);
                 ExtractData extractData = new ExtractData();
                 extractData.setTaskId(taskId);
@@ -414,9 +414,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         UrlSecurityUtils.assertNoCrlf(url);
         try {
             HttpHeaders headers = new HttpHeaders();
-            if (StringUtils.hasText(apiProperties.getDefaultToken())) {
-                headers.set("c1-token",
-                        UrlSecurityUtils.sanitizeHeaderValue(apiProperties.getDefaultToken()));
+            if (StringUtils.hasText(apiProperties.getC1ApiKey())) {
+                headers.set("c1-api-key",
+                        apiProperties.getC1ApiKey());
             }
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
             ResponseEntity<byte[]> response = restTemplate.exchange(
@@ -466,15 +466,12 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * POST 外部 queryData 接口（docQueryDataUrl），返回原始响应体。
      * 异常交由调用方处理（各调用方的失败/异常语义不同）。
      */
-    private ExternalResponse postQueryData(Long docId, String tableName, String token) {
-        // tableName 会进外部 queryData 请求体，防 CRLF 注入（响应截断），兜底校验
-        UrlSecurityUtils.assertNoCrlf(tableName,
-                "INVALID_TABLE_NAME", "表名含非法控制字符");
+    private ExternalResponse postQueryData(Long docId, String tableName, String apiKey) {
         BpExtractRequest request = new BpExtractRequest(docId, tableName);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        if (StringUtils.hasText(token)) {
-            headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
+        if (StringUtils.hasText(apiKey)) {
+            headers.set("c1-api-key", apiKey);
         }
         HttpEntity<BpExtractRequest> requestEntity = new HttpEntity<>(request, headers);
         ResponseEntity<ExternalResponse> response = restTemplate.exchange(
@@ -488,9 +485,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     /**
      * 调用外部提取数据查询 API，返回该 tableName 下的文本列表。
      */
-    private List<String> queryBusinessExtractDataByTable(Long docId, String tableName, String token) {
+    private List<String> queryBusinessExtractDataByTable(Long docId, String tableName, String apiKey) {
         try {
-            ExternalResponse respBody = postQueryData(docId, tableName, token);
+            ExternalResponse respBody = postQueryData(docId, tableName, apiKey);
             if (respBody == null || !respBody.isSuccess() || respBody.getData() == null) {
                 log.warn("Query extract data returned empty for docId={}, tableName={}: {}",
                         docId, tableName, respBody != null ? respBody.getMessage() : "null");
@@ -559,7 +556,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                     "任务 [" + taskId + "] 下未找到财务报表文档");
         }
 
-        String token = apiProperties.getDefaultToken();
+        String apiKey = apiProperties.getC1ApiKey();
 
         // ============ 资产负债表 + 利润表处理（合并单次循环） ============
         Map<String, Map<String, BigDecimal>> bsItemDateValues = new LinkedHashMap<>();
@@ -579,20 +576,20 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             // 一次查询表格提取状态，同时确定资产负债表和利润表的表类型
             List<DocTableStateRecord> states;
             try {
-                states = queryDocTableStates(docId, token);
+                states = queryDocTableStates(docId, apiKey);
             } catch (BusinessException e) {
                 log.warn("Query table states failed for docId={}: {}", docId, e.getMessage());
                 continue;
             }
-            String bsTableName = determineSheetTable(docId, states, token,
+            String bsTableName = determineSheetTable(docId, states, apiKey,
                     "dib_fin_balance", "dib_fin_balance_parent", "资产负债表");
-            String psTableName = determineSheetTable(docId, states, token,
+            String psTableName = determineSheetTable(docId, states, apiKey,
                     "dib_fin_profit_statement", "dib_fin_profit_statement_parent", "利润表");
 
             // 查询资产负债表数据
             List<FinanceRecord> bsRecords = null;
             try {
-                bsRecords = queryFinanceData(docId, bsTableName, token);
+                bsRecords = queryFinanceData(docId, bsTableName, apiKey);
             } catch (BusinessException e) {
                 log.warn("Query failed for docId={} balance sheet: {}", docId, e.getMessage());
             }
@@ -603,7 +600,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
             // 查询利润表数据
             List<FinanceRecord> psRecords = null;
             try {
-                psRecords = queryFinanceData(docId, psTableName, token);
+                psRecords = queryFinanceData(docId, psTableName, apiKey);
             } catch (BusinessException e) {
                 log.warn("Query failed for docId={} profit sheet: {}", docId, e.getMessage());
             }
@@ -693,7 +690,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         sxdMapper.updateById(record);
 
         // ============ 删除外部系统中的文档 ============
-        deleteExternalDocs(entries, token);
+        deleteExternalDocs(entries, apiKey);
 
         return document;
     }
@@ -701,14 +698,14 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     /**
      * 查询文档的表格提取状态列表。
      */
-    private List<DocTableStateRecord> queryDocTableStates(Long docId, String token) {
+    private List<DocTableStateRecord> queryDocTableStates(Long docId, String apiKey) {
         String url = apiProperties.getDocTableExtractStateUrl() + "/" + docId;
         UrlSecurityUtils.assertNoCrlf(url);
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            if (StringUtils.hasText(token)) {
-                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
+            if (StringUtils.hasText(apiKey)) {
+                headers.set("c1-api-key", apiKey);
             }
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
             ResponseEntity<ExternalResponse> response = restTemplate.exchange(
@@ -739,7 +736,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * @param parentTableName 母公司报表表名（如 dib_fin_balance_parent）
      * @param reportTypeName 报表类型名称（用于日志）
      */
-    private String determineSheetTable(Long docId, List<DocTableStateRecord> states, String token,
+    private String determineSheetTable(Long docId, List<DocTableStateRecord> states, String apiKey,
                                        String mergeTableName, String parentTableName, String reportTypeName) {
         DocTableStateRecord auditNote = null;
         DocTableStateRecord merge = null;
@@ -758,7 +755,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
 
         // ① 审计报告附注已提取 → 查询"财务报表口径"
         if (auditNote != null && "Y".equals(auditNote.getExtractState())) {
-            String scope = queryFinanceReportScope(docId, token);
+            String scope = queryFinanceReportScope(docId, apiKey);
             if ("1".equals(scope)) {
                 log.info("Doc {} 财务报表口径=单一，使用母公司{}", docId, reportTypeName);
                 return parentTableName;
@@ -790,9 +787,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      *
      * @return "1"(单一) 或 "2"(合并)，查询失败返回 null
      */
-    private String queryFinanceReportScope(Long docId, String token) {
+    private String queryFinanceReportScope(Long docId, String apiKey) {
         try {
-            ExternalResponse respBody = postQueryData(docId, "dib_intervening_y_auditreport_jh", token);
+            ExternalResponse respBody = postQueryData(docId, "dib_intervening_y_auditreport_jh", apiKey);
             if (respBody == null || !respBody.isSuccess() || respBody.getData() == null) {
                 log.warn("Failed to query audit report for docId={}", docId);
                 return null;
@@ -814,9 +811,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 查询财务报表的提取数据（调用外部 queryData 接口）。
      * 同时用于资产负债表和利润表查询。
      */
-    private List<FinanceRecord> queryFinanceData(Long docId, String tableName, String token) {
+    private List<FinanceRecord> queryFinanceData(Long docId, String tableName, String apiKey) {
         try {
-            ExternalResponse respBody = postQueryData(docId, tableName, token);
+            ExternalResponse respBody = postQueryData(docId, tableName, apiKey);
             if (respBody == null || !respBody.isSuccess() || respBody.getData() == null) {
                 throw new BusinessException("DOC_QUERY_FAILED",
                         "财务报表数据查询失败：" + (respBody != null ? respBody.getMessage() : "未知错误"));
@@ -835,10 +832,10 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 调用外部资料删除 API，逐个删除外部系统中的文档。
      * 单个文档删除失败仅告警，不影响整体流程。
      */
-    private void deleteExternalDocs(List<DocEntry> entries, String token) {
+    private void deleteExternalDocs(List<DocEntry> entries, String apiKey) {
         for (DocEntry entry : entries) {
             try {
-                deleteExternalDoc(entry.getDocId(), token);
+                deleteExternalDoc(entry.getDocId(), apiKey);
             } catch (Exception e) {
                 log.warn("Failed to delete external doc {}: {}", entry.getDocId(), e.getMessage());
             }
@@ -848,13 +845,13 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     /**
      * 调用外部 API 删除单个文档。
      */
-    private void deleteExternalDoc(String docId, String token) {
+    private void deleteExternalDoc(String docId, String apiKey) {
         String url = apiProperties.getDocDeleteUrl() + "/" + docId;
         UrlSecurityUtils.assertNoCrlf(url);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        if (StringUtils.hasText(token)) {
-            headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
+        if (StringUtils.hasText(apiKey)) {
+            headers.set("c1-api-key", apiKey);
         }
         HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
         restTemplate.exchange(url, HttpMethod.POST, requestEntity, ExternalResponse.class);

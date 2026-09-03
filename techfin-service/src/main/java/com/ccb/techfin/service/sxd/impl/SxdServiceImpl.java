@@ -59,8 +59,8 @@ public class SxdServiceImpl implements SxdService {
     @Transactional(rollbackFor = Exception.class)
     public String uploadFile(MultipartFile file) {
         fileValidator.validate(java.util.Collections.singletonList(file));
-        String token = apiProperties.getDefaultToken();
-        String attId = uploadAttachment(file, token);
+        String apiKey = apiProperties.getC1ApiKey();
+        String attId = uploadAttachment(file, apiKey);
 
         SxdAtt record = new SxdAtt();
         record.setAttId(attId);
@@ -94,7 +94,7 @@ public class SxdServiceImpl implements SxdService {
         }
 
         String batchTaskId = generateTaskId();
-        String token = apiProperties.getDefaultToken();
+        String apiKey = apiProperties.getC1ApiKey();
 
         // 创建申请记录（以 taskId 为主键）
         SxdRecord record = new SxdRecord();
@@ -106,7 +106,7 @@ public class SxdServiceImpl implements SxdService {
         try {
             // 构建批量新增参数（从 sxd_att 查文件名/大小，docTypeId 从 financeFiles/businessFile 分类确定）
             List<DocBatchAddItem> batchItems = buildBatchAddItems(allItems);
-            ExternalResponse batchResponse = batchAddDocs(batchItems, token);
+            ExternalResponse batchResponse = batchAddDocs(batchItems, apiKey);
 
             DocBatchAddData batchData = batchResponse.getDataAs(DocBatchAddData.class);
             if (batchData.getInvalidDocNames() != null
@@ -187,12 +187,12 @@ public class SxdServiceImpl implements SxdService {
                 "INVALID_ATT_ID", "附件 ID 含非法控制字符");
     }
 
-    private String uploadAttachment(MultipartFile file, String token) {
+    private String uploadAttachment(MultipartFile file, String apiKey) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-            if (StringUtils.hasText(token)) {
-                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
+            if (StringUtils.hasText(apiKey)) {
+                headers.set("c1-api-key", apiKey);
             }
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
@@ -297,12 +297,12 @@ public class SxdServiceImpl implements SxdService {
         return fileName + "_" + suffix;
     }
 
-    private ExternalResponse batchAddDocs(List<DocBatchAddItem> items, String token) {
+    private ExternalResponse batchAddDocs(List<DocBatchAddItem> items, String apiKey) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            if (StringUtils.hasText(token)) {
-                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
+            if (StringUtils.hasText(apiKey)) {
+                headers.set("c1-api-key", apiKey);
             }
             HttpEntity<List<DocBatchAddItem>> requestEntity = new HttpEntity<>(items, headers);
             ResponseEntity<ExternalResponse> response = restTemplate.exchange(
@@ -379,12 +379,12 @@ public class SxdServiceImpl implements SxdService {
                     "任务 [" + taskId + "] 下未找到文档记录");
         }
 
-        String token = apiProperties.getDefaultToken();
+        String apiKey = apiProperties.getC1ApiKey();
         String detailUrlBase = apiProperties.getDocDetailUrl();
         List<String> pendingDocNames = new ArrayList<>();
 
         for (DocEntry entry : docEntries) {
-            DocDetailData detail = getDocDetail(detailUrlBase + "/" + entry.getDocId(), token);
+            DocDetailData detail = getDocDetail(detailUrlBase + "/" + entry.getDocId(), apiKey);
             String state = detail.getExtractState();
             // U=待执行, I=执行中 — 视为未完成
             if ("U".equals(state) || "I".equals(state)) {
@@ -396,12 +396,12 @@ public class SxdServiceImpl implements SxdService {
         return new ExtractStatusResponse(completed, pendingDocNames);
     }
 
-    private DocDetailData getDocDetail(String url, String token) {
+    private DocDetailData getDocDetail(String url, String apiKey) {
         UrlSecurityUtils.assertNoCrlf(url);
         try {
             HttpHeaders headers = new HttpHeaders();
-            if (StringUtils.hasText(token)) {
-                headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
+            if (StringUtils.hasText(apiKey)) {
+                headers.set("c1-api-key", apiKey);
             }
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
             ResponseEntity<ExternalResponse> response = restTemplate.exchange(

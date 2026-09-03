@@ -24,7 +24,7 @@ DROP TABLE IF EXISTS `kjjr_ai_sxd_doc`;
 CREATE TABLE `kjjr_ai_sxd_doc`  (
   `doc_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '资料批量新增返回的文档 ID',
   `task_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联 kjjr_ai_sxd_record.task_id',
-  `business_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '业务类型（docTypeId 值），由 financeFiles/businessFile 分类从配置 api.doc-type.* 获取',
+  `business_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '业务类型（docTypeId 值），由 financeFiles/businessFile 分类从配置 dib.doc-type.* 获取',
   `report_date` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '财报报告日期（仅 finance 类型有值）',
   PRIMARY KEY (`doc_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '文档明细表' ROW_FORMAT = Dynamic;

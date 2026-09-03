@@ -124,9 +124,9 @@ public class CleanupTask {
         UrlSecurityUtils.assertNoCrlf(url);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        String token = apiProperties.getDefaultToken();
-        if (StringUtils.hasText(token)) {
-            headers.set("c1-token", UrlSecurityUtils.sanitizeHeaderValue(token));
+        String apiKey = apiProperties.getC1ApiKey();
+        if (StringUtils.hasText(apiKey)) {
+            headers.set("c1-api-key", apiKey);
         }
         HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
         restTemplate.exchange(url, HttpMethod.POST, requestEntity, String.class);

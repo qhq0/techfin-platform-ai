@@ -47,7 +47,8 @@ techfin-controller ──> techfin-service ──> techfin-dao ──> techfin-m
 | | `com.ccb.techfin.common.enums` | 通用枚举（`RoleEnum`） |
 | `techfin-model` | `com.ccb.techfin.model.sxd` | SXD 模块 Entity、DTO、Enum |
 | | `com.ccb.techfin.model.entity` | 跨模块共享 Entity（`MspDept`、`MspRole`、`MspUser`） |
-| `techfin-dao` | `com.ccb.techfin.dao.sxd` | MyBatis-Plus Mapper（`extends BaseMapper<T>`） |
+| `techfin-dao` | `com.ccb.techfin.dao` | 跨模块共享 Mapper（`MspDeptMapper`、`MspRoleMapper`、`MspUserMapper`） |
+| | `com.ccb.techfin.dao.sxd` | SXD 模块 Mapper（`extends BaseMapper<T>`） |
 | `techfin-service` | `com.ccb.techfin.service.sxd` | Service 接口+实现、Config、Validator |
 | `techfin-controller` | `com.ccb.techfin` | REST Controller + `CcbServerApplication` 启动类 |
 
@@ -207,9 +208,9 @@ Controller base: `/sxd`
 ## Configuration
 
 配置文件统一集中在 `techfin-controller/src/main/resources/application.properties`，主要包括：
-- `api.doc-type.finance` / `api.doc-type.business` — 文档类型 ID 映射
+- `dib.doc-type.finance` / `dib.doc-type.business` — 文档类型 ID 映射
 - `file.upload.allowed-extensions.*` — 不同业务类型的文件扩展名白名单
-- `api.default-token` — 外部 API 鉴权 token
+- `dib.c1-api-key` — 外部 API 鉴权 key
 - `rsa.private-key` — 前端 Token RSA 解密私钥（PKCS8 PEM）
 - `rsa.public-key` — 前端 Token RSA 加密公钥（X.509 PEM，用于刷新 token）
 - `rsa.token-validity-ms` — Token 有效期（毫秒，默认 7200000，即 2 小时）
@@ -217,7 +218,7 @@ Controller base: `/sxd`
 - `sxd.cleanup.orphan-attachment-retention-hours` — 孤立附件保留时长（小时，默认 24）
 - `mybatis-plus.configuration.log-impl` — SQL 日志
 
-配置类：`ApiProperties`（prefix=`api`）、`FileUploadConfig`（prefix=`file.upload`）
+配置类：`ApiProperties`（prefix=`dib`）、`FileUploadConfig`（prefix=`file.upload`）
 
 ## Documentation
 
