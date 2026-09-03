@@ -250,7 +250,7 @@ public class SxdServiceImpl implements SxdService {
         List<DocBatchAddItem> result = new ArrayList<>();
         Map<String, Long> docTypeMap = apiProperties.getDocType();
         Long dirId = apiProperties.getDirId();
-        Long projectId = apiProperties.getProjectId();
+        Long sxdProjectId = apiProperties.getSxdProjectId();
         for (SubmitFileMeta item : items) {
             // 根据 businessType key ("finance"/"business") 查找对应的 docTypeId
             Long docTypeId = docTypeMap.get(item.businessType);
@@ -277,7 +277,7 @@ public class SxdServiceImpl implements SxdService {
                     .docSize(att.getFileSize() / 1024)   // byte → KB
                     .docTypeId(docTypeId)
                     .extraInfo("{}")
-                    .projectId(projectId)
+                    .projectId(sxdProjectId)
                     .reportDate(item.reportDate)
                     .build());
         }
