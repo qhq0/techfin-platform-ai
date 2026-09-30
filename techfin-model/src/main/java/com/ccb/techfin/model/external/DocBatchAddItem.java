@@ -1,4 +1,4 @@
-package com.ccb.techfin.model.sxd.dto.external;
+package com.ccb.techfin.model.external;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
