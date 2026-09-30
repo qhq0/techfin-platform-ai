@@ -47,6 +47,22 @@
             <artifactId>poi-ooxml</artifactId>
         </dependency>
 
+        <!-- Apache HttpClient 5：外部平台（DIB）调用 RestClient 的底层传输实现，
+             提供可配置连接池（PoolingHttpClientConnectionManager）。版本由 spring-boot-dependencies 管理。
+             注意：JDK HttpClient 虽也有内部连接池，但池大小不可配，无法满足「池容量可控」的要求。 -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
+        <!-- Spring AI：OpenAI 兼容协议，走官方 starter 自动装配。
+             由 spring.ai.openai.* 配置驱动，自动产出 OpenAiApi / ChatModel / ChatClient.Builder，
+             不再手工构建实例。api-key 必填（Spring AI 启动时校验，留空直接启动失败）。 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

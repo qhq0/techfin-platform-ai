@@ -24,6 +24,8 @@
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
         <poi.version>5.2.5</poi.version>
         <druid.version>1.2.23</druid.version>
+        <!-- Spring AI 1.1.x 适配 Spring Boot 3.5.x；2.0 GA 已转向 Spring Boot 4.0，本项目不可用 -->
+        <spring-ai.version>1.1.2</spring-ai.version>
     </properties>
 
     <modules>
@@ -36,6 +38,15 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Spring AI BOM：统一管理 AI 相关依赖版本（已发布在 Maven Central，无需额外仓库） -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <dependency>
                 <groupId>com.ccb</groupId>
                 <artifactId>techfin-common</artifactId>
