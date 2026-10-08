@@ -17,8 +17,13 @@ import java.util.List;
  *   <li>{@code {{dib_manage_*}}} — 商业计划书提取文本，由代码替换为缓存表读取的文本</li>
  *   <li>{@code {{balance_sheet_key_items}}} — 替换为资产负债表表格</li>
  *   <li>{@code {{profit_sheet_key_items}}} — 替换为利润表表格</li>
+ *   <li>{@code {{abnormal_finance_description}}} — 替换为大模型撰写的异常财务数据说明</li>
  * </ul>
  * 用户可在此模板基础上调整格式、布局，只要保留占位符即可。
+ * <p>
+ * ⚠️ 线上在用的 {@code report-template.docx} 已被<b>手工编辑</b>过（含 {@code 测试{{...}}} 前缀、
+ * 重复占位符等），与本类生成的骨架并不一致。本类只用于重建"干净"骨架，<b>不要</b>直接拿它的
+ * 产物覆盖线上模板，否则会丢掉手工调整。
  *
  * @author qiuhaoquan
  * @since 2026-07-23
@@ -63,11 +68,26 @@ public class TemplateInitializer {
             "if_rad_alarm"   // 存在RAD红色预警
     );
 
-    /** 商业计划书提取文本占位符列表（按展示顺序） */
+    /**
+     * 商业计划书提取文本占位符列表（按展示顺序）。
+     * <p>
+     * {@code dib_manage_business_and_products} 与 {@code dib_manage_business_circumstance}
+     * 已合并为 {@code dib_manage_business_overview}：由大模型对两段提取文本做二次总结编辑后，
+     * 生成报告中「企业主营业务情况」一段正文（见 {@code BusinessOverviewSummarizer}）。
+     */
     private static final List<String> BUSINESS_PLAN_PLACEHOLDERS = Arrays.asList(
             "dib_director_keyresume",                // 实际控制人及团队简介
-            "dib_manage_business_and_products",      // 主营业务和产品
-            "dib_manage_business_circumstance"        // 经营情况介绍
+            "dib_manage_business_overview"           // 企业主营业务情况（两段提取文本的 AI 汇总）
+    );
+
+    /**
+     * 由财务数据派生、交给大模型成文的占位符列表（按展示顺序）。
+     * <p>
+     * {@code abnormal_finance_description} 的素材由报表逻辑筛出（资产负债表 / 利润表关键科目中
+     * 年末增长率绝对值超过 30% 的行），再交大模型写成文字，见 {@code AbnormalFinanceDescriber}。
+     */
+    private static final List<String> ABNORMAL_FINANCE_PLACEHOLDERS = Arrays.asList(
+            "abnormal_finance_description"           // 异常财务数据说明（超阈值科目的 AI 描述）
     );
 
     public static void main(String[] args) throws IOException {
@@ -165,6 +185,27 @@ public class TemplateInitializer {
             psRun.setText("{{profit_sheet_key_items}}");
             psRun.setFontSize(10);
             psRun.setFontFamily("微软雅黑");
+
+            doc.createParagraph();
+
+            // ========== 五、异常财务数据说明 ==========
+            XWPFParagraph section5 = doc.createParagraph();
+            XWPFRun s5Run = section5.createRun();
+            s5Run.setText("五、异常财务数据说明");
+            s5Run.setBold(true);
+            s5Run.setFontSize(14);
+            s5Run.setFontFamily("微软雅黑");
+            s5Run.setColor("1F4E79");
+
+            doc.createParagraph();
+
+            for (String field : ABNORMAL_FINANCE_PLACEHOLDERS) {
+                XWPFParagraph p = doc.createParagraph();
+                XWPFRun r = p.createRun();
+                r.setText("{{" + field + "}}");
+                r.setFontSize(10);
+                r.setFontFamily("微软雅黑");
+            }
 
             try (FileOutputStream out = new FileOutputStream(outputPath)) {
                 doc.write(out);

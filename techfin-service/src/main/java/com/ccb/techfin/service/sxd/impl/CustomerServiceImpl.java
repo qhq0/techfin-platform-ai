@@ -1,6 +1,7 @@
 package com.ccb.techfin.service.sxd.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.ccb.techfin.common.enums.RoleEnum;
 import com.ccb.techfin.common.exception.BusinessException;
 import com.ccb.techfin.dao.MspDeptMapper;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
@@ -70,8 +72,12 @@ public class CustomerServiceImpl implements CustomerService {
                     "任务 [" + taskId + "] 不存在");
         }
 
-        record.setActCntlrNm(name);
-        sxdMapper.updateById(record);
+        // 只更新 act_cntlr_nm 一列：整实体回写会把这段读-写期间（其它请求 / 其它副本）
+        // 刚改过的列用这份旧快照覆盖回去，且不会有任何报错。
+        sxdMapper.update(null, new LambdaUpdateWrapper<SxdRecord>()
+                .eq(SxdRecord::getTaskId, taskId)
+                .set(SxdRecord::getActCntlrNm, name)
+                .set(SxdRecord::getUpdatedAt, LocalDateTime.now()));
 
         if (!"1".equals(record.getHasOwnership())) {
             log.info("Customer controller name query denied: taskId={}, cstId={}, hasOwnership={}",
@@ -260,11 +266,13 @@ public class CustomerServiceImpl implements CustomerService {
      * 更新 sxd_record 中的管户权标识。
      */
     private void updateOwnership(String taskId, String hasOwnership) {
-        SxdRecord record = sxdMapper.selectById(taskId);
-        if (record != null) {
-            record.setHasOwnership(hasOwnership);
-            sxdMapper.updateById(record);
-        } else {
+        // 直接按列更新（不再「读整实体 → 改一列 → 整实体回写」），避免覆盖并发请求
+        // 改过的其它列；顺带省掉一次多余的 selectById。
+        int rows = sxdMapper.update(null, new LambdaUpdateWrapper<SxdRecord>()
+                .eq(SxdRecord::getTaskId, taskId)
+                .set(SxdRecord::getHasOwnership, hasOwnership)
+                .set(SxdRecord::getUpdatedAt, LocalDateTime.now()));
+        if (rows == 0) {
             log.warn("Task not found for ownership update: taskId={}", taskId);
         }
     }

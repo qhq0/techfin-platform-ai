@@ -21,9 +21,12 @@
 数据文件：t101_sz_hjy_sxd_profile_YYYYMMDD_0001.csv，UTF-8、无表头、每行 49 个字段以 |@| 分隔；
 第 2 列 etl_dt 不入库，空字段存 NULL，日期字段为 yyyy-mm-dd。
 
-清理：每次入数前删除推送目录中除最新一份以外的历史推送文件（只删整名完全符合
-t101_sz_hjy_sxd_profile_YYYYMMDD_NNNN(.csv) 的文件，不递归子目录、不碰 .bak/.tmp 等临时文件；
---no-cleanup 可禁用，--cleanup-after 改为入数成功后再删，--dry-run 只预演不删）。
+清理：每次入数前清理推送目录，只保留**最近 CLEANUP_KEEP_COUNT（默认 7）份**推送文件，
+按**文件名里的日期**排序（不看 mtime）；只删整名完全符合
+t101_sz_hjy_sxd_profile_YYYYMMDD_NNNN(.csv) 的文件，不递归子目录、不碰 .bak/.tmp 等临时文件，
+本次要入数的文件永不删（即使它不在最近 N 份里）；
+--keep-count 可改保留份数（0=只保留本次入数的那份），--no-cleanup 可禁用，
+--cleanup-after 改为入数成功后再删，--dry-run 只预演不删）。
 
 upsert：cst_id 已存在则更新、不存在则插入，实现为 INSERT ... ON DUPLICATE KEY UPDATE。
 
@@ -56,6 +59,10 @@ TABLE = "kjjr_ai_sxd_profile"
 # **整名必须完全吻合**（可选 .csv 后缀）：这样 .bak / .tmp / .part / .csv.ok 这类同前缀的
 # 临时、备份、标记文件既不会被误当成数据文件去入数，也不会在清理时被误删。
 FILE_RE = re.compile(r"^t101_sz_hjy_sxd_profile_(\d{8})_\d+(\.csv)?$")
+
+# 清理策略：只保留最近多少份推送文件（按**文件名里的日期**排序），更早的删除。
+# 改成别的份数就动这一个数；命令行 --keep-count 可临时覆盖。
+CLEANUP_KEEP_COUNT = 7
 
 # 表列顺序（与 DESCRIBE kjjr_ai_sxd_profile 一致，不含 etl_dt）
 COLUMNS = [
@@ -251,30 +258,53 @@ def find_latest_file(dir_path):
     return os.path.join(dir_path, candidates[-1][1]) if candidates else None
 
 
-def cleanup_old_files(dir_path, keep_name, dry_run=False):
-    """删除推送目录中除 keep_name 以外的历史推送文件，返回删除个数。
+def cleanup_old_files(dir_path, keep_name, keep_count=CLEANUP_KEEP_COUNT, dry_run=False):
+    """删除推送目录中较早的推送文件，只保留最近 keep_count 份（外加本次要入数的那个）。
+
+    排序按**文件名里的日期**，不看 mtime（NAS 挂载 / rsync / 复制都会改 mtime，按它会误删）。
+      例：keep_count=7 且目录里有 10 份 → 保留日期最新的 7 份，删除更早的 3 份。
+      keep_count=0 即只保留本次要入数的那一份（等同于"只留最新"）。
 
     安全约束（删除属破坏性操作，务必保守）：
       - 只处理该目录下的普通文件，不递归、不动子目录
       - 只删整名完全吻合推送规范的文件（FILE_RE）；同前缀的 .bak/.tmp/写一半的文件一律不碰
-      - keep_name（本次要入数的文件）永不删除；若其命名不完全规范则整个清理直接放弃
+      - keep_name（本次要入数的文件）永不删除，哪怕它不在"最近 N 份"之内；
+        若其命名不完全规范则整个清理直接放弃
+      - 文件名日期解析不出来的文件一律不删，也不占用"最近 N 份"的名额
       - 单个文件删除失败只告警不中断，绝不影响本次入数
-      - dry_run=True 时只打印将要删除的内容，不真删
+      - dry_run=True 时只打印将要删除/保留的内容，不真删
     """
     if not FILE_RE.match(keep_name):
         log("清理放弃：待保留文件命名不完全符合推送规范，为安全起见不删任何文件：%s" % keep_name)
         return 0
 
+    entries = list_push_files(dir_path)      # [(date_str, name)]，已按 (日期, 文件名) 升序
+    dated = []                               # [(日期, 文件名)]，只含日期能解析的
+    undated = []                             # 日期解析不出来的：永不删除，也不占保留名额
+    for date_str, name in entries:
+        try:
+            dated.append((datetime.strptime(date_str, "%Y%m%d").date(), name))
+        except ValueError:
+            undated.append(name)
+            log("清理跳过：文件名日期无法解析（不删除）：%s" % name)
+    dated.sort()
+
+    keep = {name for _date, name in dated[-keep_count:]} if keep_count > 0 else set()
+    keep.add(keep_name)                      # 本次入数的文件永不删
+    keep.update(undated)
+
     removed = 0
     skipped = 0
-    for _date, name in list_push_files(dir_path):
-        if name == keep_name:
+    for _date, name in entries:
+        path = os.path.join(dir_path, name)
+        if name in keep:
+            if dry_run:
+                log("[dry-run] 保留：%s" % name)
             continue
         if not FILE_RE.match(name):          # 兜底：将来若放宽了匹配，这里仍只删规范命名
             log("清理跳过非标准命名文件（不删除）：%s" % name)
             skipped += 1
             continue
-        path = os.path.join(dir_path, name)
         try:
             size = os.path.getsize(path) / 1024.0
         except OSError:
@@ -292,11 +322,14 @@ def cleanup_old_files(dir_path, keep_name, dry_run=False):
         log("已删除历史文件：%s（%.1f KB）" % (name, size))
         removed += 1
 
+    extra = "，另有 %d 个日期异常文件不删" % len(undated) if undated else ""
+    tail = ("，跳过 %d 个非标准/失败文件" % skipped) if skipped else ""
     if dry_run:
-        log("清理预演：将删除 %d 个历史文件，保留 %s" % (removed, keep_name))
+        log("清理预演（保留最近 %d 份 + 本次入数的那份%s）：将删除 %d 个，保留 %d 个"
+            % (keep_count, extra, removed, len(keep)))
     else:
-        log("清理完成：删除 %d 个历史文件，保留 %s%s"
-            % (removed, keep_name, ("，跳过 %d 个非标准/失败文件" % skipped) if skipped else ""))
+        log("清理完成（保留最近 %d 份 + 本次入数的那份%s）：删除 %d 个历史文件，保留 %d 个%s"
+            % (keep_count, extra, removed, len(keep), tail))
     return removed
 
 
@@ -315,7 +348,8 @@ def cleanup_push_dir(args, csv_path):
     if not os.path.isdir(args.dir):
         log("清理跳过：目录不存在 %s" % args.dir)
         return 0
-    return cleanup_old_files(args.dir, os.path.basename(csv_path), dry_run=args.dry_run)
+    return cleanup_old_files(args.dir, os.path.basename(csv_path),
+                             keep_count=args.keep_count, dry_run=args.dry_run)
 
 
 def sql_quote(v):
@@ -645,13 +679,19 @@ def main():
                     help="--load-data 时每个 INSERT...SELECT 刷入的最大行数（默认 %d）"
                          % DEFAULT_CHUNK_ROWS)
     ap.add_argument("--no-cleanup", action="store_true",
-                    help="保留历史推送文件，不清理（默认：入数前删除除最新外的历史文件）")
+                    help="保留历史推送文件，不清理（默认：入数前只保留最近 %d 份推送文件）"
+                         % CLEANUP_KEEP_COUNT)
+    ap.add_argument("--keep-count", type=int, default=CLEANUP_KEEP_COUNT,
+                    help="清理时只保留最近多少份推送文件，更早的删除（默认 %d；"
+                         "0=只保留本次入数的那份）" % CLEANUP_KEEP_COUNT)
     ap.add_argument("--cleanup-after", action="store_true",
                     help="改为入数成功后再清理历史文件（入数失败则历史文件保留，更稳妥）")
     args = ap.parse_args()
 
     if args.batch_size < 1 or args.chunk_rows < 1 or args.log_every < 1:
         sys.exit("--batch-size / --chunk-rows / --log-every 必须为正整数")
+    if args.keep_count < 0:
+        sys.exit("--keep-count 不能为负")
     if args.no_cleanup and args.cleanup_after:
         sys.exit("--no-cleanup 与 --cleanup-after 不能同时使用")
 

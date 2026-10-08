@@ -22,14 +22,15 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- ----------------------------
 DROP TABLE IF EXISTS `kjjr_ai_sxd_extract_data`;
 CREATE TABLE `kjjr_ai_sxd_extract_data`  (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+  `id` bigint NOT NULL COMMENT '主键，雪花 ID，由应用生成（不用数据库自增，避免集群下重复发号）',
   `task_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联 kjjr_ai_sxd_record.task_id',
   `doc_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联 kjjr_ai_sxd_doc.doc_id',
   `table_name` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '提取表名，如 dib_manage_company_profile',
   `text` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '提取文本内容',
   `created_at` datetime NOT NULL COMMENT '创建时间',
   `updated_at` datetime NOT NULL COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 118 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '提取数据缓存表' ROW_FORMAT = Dynamic;
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_task_doc_table`(`task_id`, `doc_id`, `table_name`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '提取数据缓存表' ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;

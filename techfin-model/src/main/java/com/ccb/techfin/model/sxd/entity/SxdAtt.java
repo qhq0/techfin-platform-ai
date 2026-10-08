@@ -24,7 +24,15 @@ import java.time.LocalDateTime;
 @TableName("kjjr_ai_sxd_att")
 public class SxdAtt {
 
-    @TableId(type = IdType.AUTO)
+    /**
+     * 主键，雪花 ID，由 MyBatis-Plus 的 {@code IdentifierGenerator} 赋值。
+     * <p>
+     * 刻意不用数据库自增：InnoDB 自增计数器是实例级的，多主写入或主从切换后
+     * 会重复发号，导致主键冲突（1062）。节点标识见
+     * {@code mybatis-plus.global-config.sequence.*}（每副本必须一个不同的 worker-id）。
+     * </p>
+     */
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 附件上传返回的附件 ID */

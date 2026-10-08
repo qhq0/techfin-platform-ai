@@ -6,6 +6,7 @@ import com.ccb.techfin.model.sxd.dto.request.ReportRequest;
 import com.ccb.techfin.model.sxd.dto.request.SubmitMaterialsRequest;
 import com.ccb.techfin.model.sxd.dto.response.ExtractDataItem;
 import com.ccb.techfin.model.sxd.dto.response.ExtractStatusResponse;
+import com.ccb.techfin.model.sxd.dto.response.FinanceExportResult;
 import com.ccb.techfin.service.sxd.CustomerService;
 import com.ccb.techfin.service.sxd.ExtractDataService;
 import com.ccb.techfin.service.sxd.SxdService;
@@ -152,20 +153,27 @@ public class SxdController {
      */
     @GetMapping("/export-data/finance/{taskId}")
     public ResponseEntity<byte[]> exportFinanceData(@PathVariable("taskId") String taskId) {
-        byte[] data = extractDataService.exportFinanceExtractData(taskId);
+        FinanceExportResult export = extractDataService.exportFinanceExtractData(taskId);
+        // 失败清单同时写在 zip 内（导出失败清单.txt）；这里再给个数量，便于前端提示"导出不完整"
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/zip"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         buildAttachmentDisposition("财务报表提取数据.zip", "finance_data.zip"))
-                .body(data);
+                .header("X-Export-Failed-Count", String.valueOf(export.getFailures().size()))
+                .body(export.getContent());
     }
 
     /**
      * 生成 Word 报告，包含企业基本信息、商业计划书提取文本、资产负债表关键科目和利润表关键科目。
+     * <p>
+     * 报告中的「企业主营业务情况」由大模型对两段提取文本做二次总结编辑生成，
+     * 这里把拦截器解析出的登录账号透传给大模型网关。
      */
     @PostMapping("/report")
-    public ResponseEntity<byte[]> generateReport(@RequestBody ReportRequest request) {
-        byte[] data = extractDataService.generateReport(request.getTaskId(), request.getCstId());
+    public ResponseEntity<byte[]> generateReport(@RequestBody ReportRequest request,
+                                                 HttpServletRequest servletRequest) {
+        String userAccount = (String) servletRequest.getAttribute("userAccount");
+        byte[] data = extractDataService.generateReport(request.getTaskId(), request.getCstId(), userAccount);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))

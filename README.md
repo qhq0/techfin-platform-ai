@@ -51,7 +51,7 @@ techfin-controller ──> techfin-service ──> techfin-dao ──> techfin-m
 | `techfin-dao` | `com.ccb.techfin.dao` | 跨模块共享 Mapper（`MspDeptMapper`、`MspRoleMapper`、`MspUserMapper`） |
 | | `com.ccb.techfin.dao.sxd` | SXD 模块 Mapper（`extends BaseMapper<T>`） |
 | `techfin-service` | `com.ccb.techfin.service.sxd` | Service 接口+实现、Config、Validator |
-| | `com.ccb.techfin.service.external.config` | 外部平台配置与 HTTP 客户端（`ApiProperties` prefix=`dib`；`RestClientConfig` 提供 `fileRestClient`/`apiRestClient` 两个 `RestClient`，底层各挂一个 Apache HttpClient 5 连接池） |
+| | `com.ccb.techfin.service.external.config` | 外部平台配置与 HTTP 客户端（`ApiProperties` prefix=`dib`；`RestClientConfig` 提供 `fileRestClient`/`downloadRestClient`/`apiRestClient` 三个 `RestClient`，底层各挂一个 Apache HttpClient 5 连接池） |
 | `techfin-controller` | `com.ccb.techfin` | REST Controller + `CcbServerApplication` 启动类 |
 
 ## Key Conventions
@@ -85,11 +85,14 @@ Result.fail(-1, "错误信息");             // 业务异常
 - 实体类用 `@TableName`、`@TableId`、`@TableField` 注解
 - 主键策略三选一：`IdType.ASSIGN_ID`（雪花 ID，`kjjr_ai_sxd_att` / `kjjr_ai_sxd_extract_data`）、
   `IdType.AUTO`（数据库自增，MSP 三张表）、`IdType.INPUT`（手工赋值，`kjjr_ai_sxd_record.task_id`）
-- **雪花 ID 的节点标识**由 `DistributedIdConfig` 注册的 `IdentifierGenerator` bean 提供，取值来自
-  `techfin.id.worker-id` / `techfin.id.datacenter-id`（各 5 bit，0-31）。多副本部署必须为每个副本配不同的
-  `worker-id`，否则两个实例会生成重复主键；不配置时按容器主机名派生并打 WARN，越界则直接启动失败。
-  **不要用 `mybatis-plus.global-config.sequence.*`** —— 注册了自定义 `IdentifierGenerator` bean 后，
-  MP 会跳过它自己那条分支，那个开关配了也不生效（启动时会打 WARN 提示）
+- **雪花 ID 的节点标识**用 MyBatis-Plus 自带配置项
+  `mybatis-plus.global-config.sequence.worker-id` / `.datacenter-id`（各 5 bit，0-31），直接写字面值。
+  项目**不再**自注册 `IdentifierGenerator` bean（算法始终是 MP 的 `Sequence`，项目没有自研雪花实现）。
+  ⚠️ **两项都必须配** —— MP 的判定是 `workerId != null && datacenterId != null`，少任何一个都会静默落回
+  「找网卡 → 容器里 PID<10 则 workerId 取随机数」分支，且**没有任何日志**。
+  每个副本必须用**不同**的 `worker-id`，否则两个实例会生成重复主键：改 `application.properties` 本行，
+  或在容器 WORKDIR（`/home/ap/kjjr_ai`）下挂一份 `config/application.properties` 覆盖（优先级高于 jar 内）。
+  越界（>31）由 `Sequence` 的 `Assert` 抛异常、启动失败
 - `@TableField(fill = FieldFill.INSERT)` / `FieldFill.INSERT_UPDATE` 配合 `MyMetaObjectHandler` 实现 `createdAt` / `updatedAt` 自动填充，无需在业务代码中手动 set 时间
 - 枚举实现 `IEnum<String>`，`getValue()` 返回 `name()`，数据库存枚举常量名
 - Mapper 接口 `@Mapper` + `extends BaseMapper<T>`，无自定义方法时为空接口
@@ -111,7 +114,7 @@ Result.fail(-1, "错误信息");             // 业务异常
 
 1. 它的写操作都在私有方法里、由同类方法自调用（`replaceExtractDataCache()` / `markTaskFinished()`），
    自调用不经过 Spring 代理，`@Transactional` 会**静默失效**；
-2. 这两个流程里夹着大量外部平台 HTTP 调用（单次超时 30s），
+2. 这两个流程里夹着大量外部平台 HTTP 调用（单次最坏 18s），
    把它们圈进事务会长时间占用数据库连接，集群下容易打满 `druid.max-active`。
    因此刻意把「外部调用」与「数据库写入」拆开：先把外部数据全部取回，再用事务包住写库那一段。
 
@@ -133,18 +136,32 @@ ResponseEntity<ExternalResponse> response = apiRestClient.post()
 ExternalResponse respBody = response.getBody();
 ```
 
-**注入必须带 `@Qualifier`** —— 两个同类型 `RestClient` bean（`fileRestClient` / `apiRestClient`），
+**鉴权头由客户端统一注入**：`c1-api-key` 在 `RestClientConfig` 中以请求拦截器挂在三个 `RestClient` 上，
+调用点不再逐个 `headers.set(...)`（原先散落 7 处，每新增一个外部接口就要记得补一次，漏了只在联调时表现为 401）。
+key 取自 `dib.c1-api-key`，为空时不发该头。
+
+**注入必须带 `@Qualifier`** —— 三个同类型 `RestClient` bean（`fileRestClient` / `downloadRestClient` / `apiRestClient`），
 按「请求/响应体量」分工，超时与连接池互相隔离：
 
 | bean | 用途 | 超时 |
 |---|---|---|
-| `fileRestClient` | 附件上传（multipart）、导出文件下载（`byte[]`） | `dib.file-timeout-seconds`（120s） |
-| `apiRestClient` | 批量新增、资料详情、数据查询、状态轮询、删除 | `dib.api-timeout-seconds`（30s） |
+| `fileRestClient` | 附件上传（multipart，单文件可达 50MB） | 响应 `dib.file-timeout-seconds`（60s） |
+| `downloadRestClient` | 导出文件下载（`byte[]` xlsx） | 响应 `dib.download-timeout-seconds`（30s） |
+| `apiRestClient` | 批量新增、资料详情、数据查询、状态轮询、删除 | 响应 `dib.api-timeout-seconds`（10s） |
+
+上传与下载分档的理由是**诉求相反**：上传要宽容（等 DIB 收完 multipart），下载要能快速失败
+（导出是同步 HTTP，按文档串行 N 次会放大最坏耗时，越过网关 60s 后用户只拿到 504、服务端仍在空转）。
+故上传与下载取值不同：上传 60s / 下载 30s —— 下载单份最坏 = 等池 3 + 建连 5 + 30 = 38s，网关 60s 下留 22s 余量。
+
+建连超时不跟这三档走：它是连接级参数，三个 client 共用 `dib.pool.connect-timeout-seconds`（5s；DIB 走 http，
+这一段只有 TCP + DNS）—— 响应可以耐心等，「连不上」不该等。
 
 需要「无响应体」时用 `.retrieve().toBodilessEntity()`（等价于原来 `exchange(url, POST, entity, X.class)` 并忽略返回值）。
 
 底层传输是 **Apache HttpClient 5**（`httpclient5`，版本由 Boot BOM 管理），
-两个 bean 各持一个独立的 `PoolingHttpClientConnectionManager`：一次 50MB 慢上传不会占满轮询接口的连接配额。
+三个 bean 各持一个独立的 `PoolingHttpClientConnectionManager`：一次 50MB 慢上传不会占满轮询接口与下载的连接配额。
+池参数里只有**单主机连接上限**按 client 分档（`dib.pool.file-max-per-route` / `dib.pool.download-max-per-route` / `dib.pool.api-max-per-route`），加上三者共用的建连超时 `dib.pool.connect-timeout-seconds`；其余是共用常量基线 ——
+详见 [配置](#configuration)。
 
 ```java
 // 通用响应类
@@ -246,7 +263,7 @@ lombok.copyableAnnotations += org.springframework.beans.factory.annotation.Quali
 编译期完全看不出来（只能靠下面的 javap 查字节码）。
 
 但删掉第二行**未必**立刻报错，别以"能启动"判断它没用。Lombok 用**字段名**当构造器参数名，
-而这三个类的字段名恰好与 bean 名同名（`fileRestClient` / `apiRestClient`），再加上
+而这三个类的字段名恰好与 bean 名同名（`fileRestClient` / `downloadRestClient` / `apiRestClient`），再加上
 `spring-boot-starter-parent` 默认开启 `-parameters`（参数名保留在字节码里），
 Spring 会退化成「按参数名匹配 bean 名」，于是**侥幸**注入正确。实测（Spring 6.2.16 / Java 17）：
 
@@ -272,7 +289,7 @@ javap -v -p -cp techfin-service/target/classes <FQCN> | grep -A 30 RuntimeVisibl
 |------|------|------|
 | `kjjr_ai_sxd_att` | `id` (BIGINT，雪花 ID) | 附件元信息，`att_id` 上有唯一索引 `uk_att_id`；主键由应用生成，列上**不是** AUTO_INCREMENT |
 | `kjjr_ai_sxd_record` | `task_id` (VARCHAR(64)) | 申请记录，手工生成 `TASK-<32位hex>` |
-| `kjjr_ai_sxd_doc` | `doc_id` (VARCHAR(64)) | 文档明细，外部 API 返回的 ID |
+| `kjjr_ai_sxd_doc` | `doc_id` (VARCHAR(64)) | 文档明细，外部 API 返回的 ID；`(task_id, business_type)` 上有复合索引 `idx_task_id_business_type` |
 | `kjjr_ai_sxd_extract_data` | `id` (BIGINT，雪花 ID) | 提取数据缓存表；主键由应用生成，列上**不是** AUTO_INCREMENT |
 | `kjjr_ai_sxd_profile` | `cst_id` (VARCHAR(200)) | 客户信息表，以 `cst_id` 为主键 |
 | `msp_user` | `id` (INT AUTO_INCREMENT) | 用户表，`account` 关联 token 中的 userAccount，`staff_code` 关联 `kjjr_ai_sxd_profile.cst_mngacc_cstmgr_id` |
@@ -287,28 +304,32 @@ javap -v -p -cp techfin-service/target/classes <FQCN> | grep -A 30 RuntimeVisibl
 - `dib.doc-type.finance` / `dib.doc-type.business` — 文档类型 ID 映射
 - `file.upload.allowed-extensions.*` — 不同业务类型的文件扩展名白名单
 - `dib.c1-api-key` — 外部 API 鉴权 key
-- `dib.file-timeout-seconds` — 文件传输超时（秒，默认 120），作用于 `fileRestClient`（附件上传、导出文件下载）
-- `dib.api-timeout-seconds` — 轻量接口超时（秒，默认 30），作用于 `apiRestClient`（批量新增、资料详情、数据查询、状态轮询、删除）
-- `dib.pool.*` — HTTP 连接池（Apache HttpClient 5，file / api 各一个独立池，共用这套数值）：
-  `max-total`(20) / `max-per-route`(10) / `connection-request-timeout-seconds`(10) /
-  `connection-ttl-seconds`(300) / `validate-after-inactivity-seconds`(5) / `idle-evict-seconds`(30)
+- `dib.file-timeout-seconds` — 附件上传的**响应**超时（秒，默认 60），作用于 `fileRestClient`；只管等待响应 / 读响应的空闲，**上传的写请求体阶段不受它约束**
+- `dib.download-timeout-seconds` — 导出下载的**响应**超时（秒，默认 30），作用于 `downloadRestClient`。取 30s 让下载能快速失败：单份最坏 = 等池(3) + 建连(5) + 30 = 38s，网关 60s 下留 22s 余量；若将来给导出加「总预算」，预算须 > 38s
+- `dib.api-timeout-seconds` — 轻量接口的**响应**超时（秒，默认 10）：实测都是秒级，10s 已远超正常值。这一档被串行放大的倍数最大（最多 ×9），单份最坏 = 等池(3) + 建连(5) + 10 = 18s，所以宽度要克制
+- `dib.pool.*` — HTTP 连接池（upload / download / api 各一个独立池）。**只有 4 个可配项**：
+  `connect-timeout-seconds`(5) / `file-max-per-route`(4) / `download-max-per-route`(4) / `api-max-per-route`(10)
+  - 其余池参数（等池超时 3s / 复用前校验 5s / 连接 TTL 300s / 总连接上限 20）是 `RestClientConfig` 里的
+    **常量**：库默认都不可接受（3 分钟 / 不校验 / 永不过期），但没有环境差异、也没有可验证的调参判据
+  - 数值项都带 `@Min`（0 直接**启动失败**：HC5 里 0 = 无限等待）；`file-max-per-route` 同时就是并发上传数上限
+  - 池参数**没有**「基线 + 覆盖」间接层，每个值都是最终生效值
 - `rsa.private-key` — 前端 Token RSA 解密私钥（PKCS8 PEM）
 - `rsa.public-key` — 前端 Token RSA 加密公钥（X.509 PEM，用于刷新 token）
 - `rsa.token-validity-ms` — Token 有效期（毫秒，默认 7200000，即 2 小时）
-- `techfin.id.worker-id` / `techfin.id.datacenter-id` — 雪花 ID 节点标识（0-31，各占 5 bit）。
-  多副本部署必须为每个副本配不同的 `worker-id`；不配置时按容器主机名确定性派生（启动打 WARN）。
-  **不要用 `mybatis-plus.global-config.sequence.*`**，那个开关已被自定义 `IdentifierGenerator` bean 覆盖
+- `mybatis-plus.global-config.sequence.worker-id` / `.datacenter-id` — 雪花 ID 节点标识（0-31，各占 5 bit），
+  直接写字面值。**两项都必须配**（少一个会静默落回随机分支），且每个副本必须用不同的 `worker-id`；
+  容器差异由各容器自己的 `config/application.properties` 覆盖实现
 - `mybatis-plus.configuration.log-impl` — SQL 日志
+- `report.template-path` — Word 报告模板路径（支持 `classpath:` / `file:`）
 
-配置类：`ApiProperties`（prefix=`dib`，位于 `service.external.config`）、`FileUploadConfig`（prefix=`file.upload`，位于 `service.sxd.config`）、`DistributedIdProperties`（prefix=`techfin.id`，位于 `service.config`）
+配置类：`ApiProperties`（prefix=`dib`，位于 `service.external.config`）、`FileUploadConfig`（prefix=`file.upload`，位于 `service.sxd.config`）
 
 ## Documentation
 
 业务功能说明文档在 `docs/` 目录下：
 - `docs/上传材料功能说明.md` — 附件上传 + 提交资料全流程
 - `docs/kjjr_ai_sxd_profile.sql`、`docs/sql/kjjr_ai_sxd_{att,doc,record,extract_data}.sql` — SXD 模块建表 SQL
-- `docs/sql/alter_20260929_att_uk_att_id.sql` — 存量库补 `att_id` 唯一索引的迁移脚本（含去重步骤）
-- `docs/sql/alter_20260929_distributed_id.sql` — 两张 SXD 表主键改用雪花 ID 的存量库迁移脚本（去 `AUTO_INCREMENT`，含部署顺序说明）
+- ~~`docs/sql/alter_*.sql`~~ — ❌ **已删除（2026-10-08）**：表结构改为「**删表重建**」维护方式，直接跑上面的建表 SQL（脚本内已含 `DROP TABLE IF EXISTS`）；历史增量脚本的改动均已并入建表 SQL
 - `_scratch/SnowflakeIdProbe.java` — 雪花 ID 节点标识探针（不依赖数据库，验证发号唯一性与配置校验；运行方式见文件末尾注释）
 - `docs/sql/msp_{dept,role,user}.sql` — MSP 模块建表 SQL
 - `docs/要素提取功能说明.md` — 资料要素提取

@@ -19,6 +19,10 @@ import java.util.regex.Pattern;
  * 上传文件校验器：校验文件大小、扩展名/MIME 白名单、文件名合法性，
  * 以及文件头魔数与扩展名匹配（防伪装文件）。
  * <p>
+ * 两处入口，职责不同：上传时走 {@link #validate(List)}，此刻业务类型未知，扩展名按两个槽位
+ * <b>求并集</b>；提交时走 {@link #validateByBusinessType(String, String)}，按槽位分别校验。
+ * </p>
+ * <p>
  * 校验失败时抛出 {@link FileValidationException} 并记录审计日志
  * （时间、校验码、文件名、失败原因）。
  * </p>
@@ -83,6 +87,49 @@ public class FileValidator {
             allowedExts.addAll(exts);
         }
         doValidate(files, maxFileSize, allowedExts);
+    }
+
+    /**
+     * 按业务槽位校验文件扩展名。
+     *
+     * <p>{@link #validate(List)} 在上传时运行，那一刻<b>并不知道</b>文件属于哪个槽位 —— 业务类型要等到
+     * 提交资料时由请求体（{@code financeFiles} / {@code businessFile}）确定。所以上传阶段只能对两个槽位的
+     * 扩展名<b>求并集</b>，单槽位的约束在那里无法生效（需求 §2.2-A 财务报表 / §2.2-B 商业计划书的允许集合
+     * 并不相同）。本方法补的正是这一刀：在提交阶段按槽位再校验一次。
+     *
+     * <p>校验失败抛 {@link FileValidationException}，消息里必须写清<b>该槽位允许哪些格式</b> ——
+     * 此时文件已上传、attId 已消耗，拒绝就意味着要重传，措辞不明确用户只会收到一次莫名其妙的失败。
+     *
+     * @param fileName     原始文件名（提交阶段取自 {@code kjjr_ai_sxd_att.file_name}）
+     * @param businessType 槽位 key：{@code finance} / {@code business}
+     */
+    public void validateByBusinessType(String fileName, String businessType) {
+        List<String> allowed = uploadConfig.getAllowedExtensions().get(businessType);
+        if (allowed == null) {
+            // 配置里缺这个槽位 = 部署问题（@NotEmpty 只保证 map 非空，不保证每个槽位都在）。
+            // 这里**失败要闭不要开**：宁可拦下并要求补配置，也不能让校验悄悄消失。
+            throw fail(fileName, "SLOT_NOT_CONFIGURED",
+                    "系统未配置「" + labelOf(businessType) + "」槽位的文件格式白名单，请联系管理员");
+        }
+        String extension = getExtension(fileName);
+        if (extension == null || !allowed.contains(extension)) {
+            throw fail(fileName, "SLOT_FORMAT_MISMATCH",
+                    "文件「" + fileName + "」的格式（" + (extension == null ? "无扩展名" : "." + extension)
+                            + "）不符合「" + labelOf(businessType) + "」槽位要求，该槽位允许："
+                            + String.join(" / ", allowed)
+                            + "。请重新上传符合该槽位格式的文件");
+        }
+    }
+
+    /** 槽位 key → 界面上的叫法（与需求文档 §2.2-A / §2.2-B 的措辞一致）；未知 key 原样回显。 */
+    private static String labelOf(String businessType) {
+        if ("finance".equals(businessType)) {
+            return "财务报表";
+        }
+        if ("business".equals(businessType)) {
+            return "商业计划书";
+        }
+        return businessType;
     }
 
     private void doValidate(List<MultipartFile> files, long maxFileSize, Set<String> allowedExts) {

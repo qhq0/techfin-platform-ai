@@ -22,12 +22,13 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- ----------------------------
 DROP TABLE IF EXISTS `kjjr_ai_sxd_att`;
 CREATE TABLE `kjjr_ai_sxd_att`  (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+  `id` bigint NOT NULL COMMENT '主键，雪花 ID，由应用生成（不用数据库自增，避免集群下重复发号）',
   `att_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '附件上传返回的附件 ID',
   `file_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '上传时的原始文件名',
   `file_size` bigint NULL DEFAULT NULL COMMENT '文件大小（字节）',
   `created_at` datetime NOT NULL COMMENT '创建时间，用于清理孤立附件',
-  PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 102 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '附件元信息表' ROW_FORMAT = Dynamic;
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_att_id`(`att_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '附件元信息表' ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;
