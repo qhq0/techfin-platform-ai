@@ -120,6 +120,14 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     @Value("${report.template-path}")
     private String reportTemplatePath;
 
+    /**
+     * 无管户权（{@code has_ownership != '1'}）时使用的报告模板路径。
+     * 该模板已删除全部来源于 {@code kjjr_ai_sxd_profile} 的字段占位符，
+     * 仅 {@code {{act_cntlr_nm}}}（来自 {@code kjjr_ai_sxd_record}）仍会填充。
+     */
+    @Value("${report.template-path-no-ownership}")
+    private String noOwnershipReportTemplatePath;
+
     /** 商业计划书提取数据查询的 tableName 列表（按展示顺序） */
     private static final List<String> BUSINESS_PLAN_TABLES = Collections.unmodifiableList(
             Arrays.asList(
@@ -958,7 +966,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
         applyAbnormalFinanceDescription(bsItemDateValues, bsDateColumns,
                 psItemDateValues, psDateColumns, extractTextMap, taskId, userId);
 
-        // ============ 生成 Word 文档 ============
+        // ============ 生成 Word 文档（模板按 hasOwnership 二选一，见 createWordDocument） ============
         byte[] document = createWordDocument(customerProfile, actCntlrNm, hasOwnership,
                 bsItemDateValues, bsDateColumns,
                 psItemDateValues, psDateColumns, extractTextMap);
@@ -1459,6 +1467,10 @@ public class ExtractDataServiceImpl implements ExtractDataService {
     /**
      * 打开模板文档，替换 {{占位符}} 为实际数据，返回 Word 文档字节。
      * <p>
+     * 模板按管户权二选一：{@code has_ownership='1'} 用 {@code report.template-path}（所有占位符正常填充）；
+     * 无管户权（{@code '0'} 或未设置）用 {@code report.template-path-no-ownership} —— 该模板已删除
+     * 全部来源于 {@code kjjr_ai_sxd_profile} 的字段占位符，这些字段不再出现在报告中。
+     * <p>
      * 模板中 {{{{field_name}}}} 占位符会被替换为客户信息字段值，
      * {{{{balance_sheet_key_items}}}} 和 {{{{profit_sheet_key_items}}}} 会被替换为对应的数据表格。
      */
@@ -1466,7 +1478,7 @@ public class ExtractDataServiceImpl implements ExtractDataService {
                                        Map<String, Map<String, BigDecimal>> bsItemDateValues, List<String> bsDateColumns,
                                        Map<String, Map<String, BigDecimal>> psItemDateValues, List<String> psDateColumns,
                                        Map<String, String> extractTextMap) {
-        String templatePath = reportTemplatePath;
+        String templatePath = hasOwnership ? reportTemplatePath : noOwnershipReportTemplatePath;
         Resource templateResource = resourceLoader.getResource(templatePath);
         if (!templateResource.exists()) {
             throw new BusinessException("TEMPLATE_NOT_FOUND",
@@ -1516,6 +1528,9 @@ public class ExtractDataServiceImpl implements ExtractDataService {
      * 管户权规则：{{act_cntlr_nm}} 始终从 kjjr_ai_sxd_record.act_cntlr_nm 读取，不受管户权影响；
      * 其余从 kjjr_ai_sxd_profile 读取的占位符，has_ownership=1 时按正常值填充，
      * has_ownership=0 或未设置时统一替换为空字符串。
+     * <p>
+     * 说明：无管户权报告实际使用的是已删除这些占位符的模板（{@code report.template-path-no-ownership}），
+     * 这里"置空"属兜底 —— 若自定义的无管户权模板仍残留这些占位符，也不会把敏感数据填进去。
      */
     private void replaceProfilePlaceholders(XWPFDocument doc, CustomerProfile profile, String actCntlrNm, boolean hasOwnership) {
         // 按 PROFILE_FIELD_GETTERS 的迭代顺序构建占位符 → 值映射，

@@ -24,6 +24,11 @@ import java.util.List;
  * ⚠️ 线上在用的 {@code report-template.docx} 已被<b>手工编辑</b>过（含 {@code 测试{{...}}} 前缀、
  * 重复占位符等），与本类生成的骨架并不一致。本类只用于重建"干净"骨架，<b>不要</b>直接拿它的
  * 产物覆盖线上模板，否则会丢掉手工调整。
+ * <p>
+ * ⚠️ 线上模板是<b>两份</b>：{@code report-template.docx}（有管户权）与
+ * {@code report-template-no-ownership.docx}（无管户权，由前者整段/整表删除 33 个
+ * {@code kjjr_ai_sxd_profile} 字段的占位符派生，详见 {@code docs/报告生成功能说明.md}）。
+ * 本类只生成有管户权那一份的骨架。
  *
  * @author qiuhaoquan
  * @since 2026-07-23

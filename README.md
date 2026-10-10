@@ -320,7 +320,7 @@ javap -v -p -cp techfin-service/target/classes <FQCN> | grep -A 30 RuntimeVisibl
   直接写字面值。**两项都必须配**（少一个会静默落回随机分支），且每个副本必须用不同的 `worker-id`；
   容器差异由各容器自己的 `config/application.properties` 覆盖实现
 - `mybatis-plus.configuration.log-impl` — SQL 日志
-- `report.template-path` — Word 报告模板路径（支持 `classpath:` / `file:`）
+- `report.template-path` / `report.template-path-no-ownership` — Word 报告模板路径（支持 `classpath:` / `file:`），按 `has_ownership` 二选一，**均为必需项**（缺任一项启动失败）
 
 配置类：`ApiProperties`（prefix=`dib`，位于 `service.external.config`）、`FileUploadConfig`（prefix=`file.upload`，位于 `service.sxd.config`）
 
